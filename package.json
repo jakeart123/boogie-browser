@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Native Linux browser and editor for Eagle 4 libraries",
+  "license": "MIT",
   "type": "module",
   "main": "out/main/index.js",
   "engines": {

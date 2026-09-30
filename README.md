@@ -78,3 +78,7 @@ suite in `test/e2e` drives the built app under Xvfb and expects larger local sam
 - `src/app`: the Electron main process.
 - `src/renderer`: the Svelte interface.
 - `src/shared`: types and the API shared by both sides.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
