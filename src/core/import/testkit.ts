@@ -3,7 +3,15 @@
 // vips/ffmpeg and these tests care about what import does with the answers, not the pixels.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { constants, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  constants,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { EagleItemRecord, EagleRootRecord, Palette } from '../../shared/types';
@@ -25,7 +33,12 @@ import { setWritableRoots } from '../safety/writeGuard';
 import { importers } from './importer';
 
 const PROJECT = fileURLToPath(new URL('../../../', import.meta.url));
-export const TEMPLATE = join(PROJECT, 'research/sandbox/templates/sample.library');
+// The real library copy when it is here, else the generated one committed with the tests.
+const REAL = join(PROJECT, 'research/sandbox/templates/sample.library');
+export const TEMPLATE =
+  !process.env.BOOGIE_TEST_FIXTURES && existsSync(REAL)
+    ? REAL
+    : join(PROJECT, 'test/fixtures/libraries/sample.library');
 
 export const ctx: ChangeContext = {
   actor: { kind: 'user', name: 'You' },
