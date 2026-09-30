@@ -1,0 +1,16 @@
+research/eagle-app/
+research/sandbox/
+node_modules/
+research/survey/*.jsonl
+research/survey/*.json
+out/
+dist/
+.tmp/
+test-results/
+*.log
+# Eagle's proprietary code excerpts and copies of library art/data stay out of git
+research/format-notes/bundle-toplevel.txt
+research/format-notes/scan/*.pkl
+research/format-notes/scan/*.out.txt
+research/survey/*.jpg
+design/mockups/assets/

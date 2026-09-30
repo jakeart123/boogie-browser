@@ -1,0 +1,264 @@
+/* Sidebar look (mockup .m2 .side). Global on purpose: every sidebar component shares the same
+   row, section and count styles, all under .sb so nothing leaks. */
+.sb {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+.sb-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 8px 0 24px;
+}
+
+/* rows: nav items, tags, smart folders, quick access, folders */
+.sb-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 28px;
+  margin: 0 8px;
+  padding: 0 10px;
+  border-radius: var(--radius);
+  color: var(--tx);
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+  transition: background 100ms ease-out;
+}
+.sb-row:hover {
+  background: var(--hov);
+}
+button.sb-row {
+  width: calc(100% - 16px);
+  text-align: left;
+}
+.sb-row.sel {
+  background: var(--bls);
+}
+.sb-row.sel .sb-ct {
+  color: var(--link);
+}
+.sb-row.cur {
+  box-shadow: inset 0 0 0 1px var(--bl-soft);
+}
+.sb-row.dim {
+  color: var(--fa);
+}
+.sb-row:focus-visible {
+  outline: 1px solid var(--bl-soft);
+  outline-offset: -1px;
+}
+.sb-row > svg {
+  flex: none;
+}
+.sb-row .ic {
+  color: var(--mu);
+}
+.sb-row .fn {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sb-ct {
+  margin-left: auto;
+  padding-left: 8px;
+  font-size: 11.5px;
+  color: var(--fa);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+/* folder tree rows are a little tighter and indent 16px per level. Past level 6 the indent
+   shrinks to 6px so a 13-deep folder (the Art library has them) still has room for its name. */
+.sb-row.tree {
+  height: 26px;
+  gap: 7px;
+  padding-left: calc(6px + min(var(--d, 0), 6) * 16px + max(var(--d, 0) - 6, 0) * 6px);
+}
+.sb-car {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--fa);
+  border-radius: 3px;
+}
+button.sb-car:hover {
+  color: var(--tx);
+  background: var(--chip);
+}
+.sb-car svg {
+  transition: transform 120ms ease-out;
+}
+.sb-row.open > .sb-car svg {
+  transform: rotate(90deg);
+}
+.sb-row .hash {
+  width: 16px;
+  text-align: center;
+  color: var(--fa);
+  font-size: 12px;
+  flex: none;
+}
+
+/* drag and drop targets */
+.sb-row.dz-inside {
+  background: var(--bls);
+  box-shadow: inset 0 0 0 1px var(--bl);
+}
+.sb-row.dz-before::before,
+.sb-row.dz-after::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--bl);
+  pointer-events: none;
+}
+.sb-row.dz-before::before {
+  top: -1px;
+}
+.sb-row.dz-after::after {
+  bottom: -1px;
+}
+.sb-row.dragging {
+  opacity: 0.45;
+}
+
+/* section headers */
+.sb-sec {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 10px 4px 12px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--fa);
+}
+.sb-sec-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 2px 6px 2px 4px;
+  border-radius: 5px;
+  font-weight: 600;
+  color: inherit;
+}
+.sb-sec-toggle:hover {
+  color: var(--mu);
+}
+.sb-sec-toggle svg {
+  transition: transform 120ms ease-out;
+  flex: none;
+}
+.sb-sec-toggle.open svg {
+  transform: rotate(90deg);
+}
+.sb-sec-toggle .n {
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.sb-sec-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.sb-ib {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  color: var(--fa);
+}
+.sb-ib:hover:not(:disabled) {
+  background: var(--hov);
+  color: var(--tx);
+}
+.sb-ib:disabled {
+  opacity: 0.4;
+}
+.sb-sub {
+  padding: 10px 18px 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fa);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sb-sub .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.sb-sub .star {
+  color: var(--star);
+  fill: currentColor;
+  flex: none;
+}
+.sb-sub .n {
+  margin-left: auto;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.sb-hint {
+  padding: 4px 18px 6px;
+  font-size: 11.5px;
+  color: var(--fa);
+}
+
+/* inline name editor */
+.sb-input {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--fld);
+  border: 1px solid var(--bl);
+  color: var(--tx);
+  font-size: 13px;
+  outline: none;
+}
+.sb-input::placeholder {
+  color: var(--fa);
+}
+
+/* tag filter box */
+.sb-filter {
+  display: block;
+  width: calc(100% - 20px);
+  height: 26px;
+  margin: 2px 10px 6px;
+  padding: 0 9px;
+  border-radius: 6px;
+  background: var(--fld);
+  border: 1px solid var(--line);
+  color: var(--tx);
+  font-size: 12px;
+  outline: none;
+}
+.sb-filter:focus {
+  border-color: var(--bl-soft);
+}
+.sb-filter::placeholder {
+  color: var(--fa);
+}
+.sb-taglist {
+  max-height: 300px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}

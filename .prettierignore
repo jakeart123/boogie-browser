@@ -1,0 +1,8 @@
+research/
+design/
+out/
+dist/
+node_modules/
+.tmp/
+package-lock.json
+test/fixtures/libraries/

@@ -1,0 +1,12 @@
+import { defineConfig } from 'vitest/config';
+import { svelte } from '@sveltejs/vite-plugin-svelte';
+
+export default defineConfig({
+  plugins: [svelte()],
+  test: {
+    include: ['src/**/*.test.ts', 'test/**/*.test.ts'],
+    environment: 'node',
+    testTimeout: 30000,
+    pool: 'forks',
+  },
+});

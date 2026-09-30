@@ -1,0 +1,59 @@
+{
+  "name": "boogie-browser",
+  "productName": "Boogie Browser",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Native Linux browser and editor for Eagle 4 libraries",
+  "type": "module",
+  "main": "out/main/index.js",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "electron-vite dev",
+    "dev:web": "vite --config vite.web.config.ts",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && svelte-check --tsconfig tsconfig.web.json --threshold error",
+    "format": "prettier --write .",
+    "shot": "node scripts/shot.mjs",
+    "app:dist": "electron-vite build && electron-builder --linux dir",
+    "app:install": "npm run app:dist && node scripts/install-app.mjs",
+    "e2e": "node scripts/e2e-smoke.mjs",
+    "e2e:full": "node test/e2e/run.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/node": "^2.1.0",
+    "@modelcontextprotocol/server": "^2.1.0",
+    "better-sqlite3": "^13.0.3",
+    "culori": "^4.0.2",
+    "hono": "^4.13.10",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@lucide/svelte": "^1.48.0",
+    "@sveltejs/vite-plugin-svelte": "^6.2.4",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/culori": "^4.0.1",
+    "@types/node": "^24.19.0",
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "playwright": "^1.63.0",
+    "prettier": "^3.9.9",
+    "prettier-plugin-svelte": "^4.1.1",
+    "svelte": "^5.57.1",
+    "svelte-check": "^4.7.6",
+    "typescript": "^6.0.3",
+    "vite": "^7.3.6",
+    "vitest": "^5.0.2"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.2": true,
+    "better-sqlite3": false,
+    "electron-winstaller": false
+  }
+}

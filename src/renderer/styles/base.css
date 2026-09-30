@@ -1,0 +1,55 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--tx);
+  font: 13px/1.4 var(--font);
+  overflow: hidden;
+}
+#app {
+  height: 100%;
+}
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: default;
+}
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+kbd {
+  font: 500 10.5px/1 var(--font);
+  color: var(--mu);
+  border: 1px solid var(--chip-line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 3px 5px;
+  background: #26272b;
+  white-space: nowrap;
+}
+::selection {
+  background: var(--bls);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3a3b41 transparent;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}

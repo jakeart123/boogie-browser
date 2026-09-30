@@ -1,0 +1,29 @@
+# Packaging: `npm run app:dist` builds an unpacked app into dist/linux-unpacked, and
+# `npm run app:install` copies it to ~/.local/opt/boogie-browser (scripts/install-app.mjs).
+# No installer, no auto-update: it installs into your home folder on this machine.
+appId: com.boogiebrowser.app
+productName: Boogie Browser
+directories:
+  output: dist
+files:
+  - out/**
+  - package.json
+  # better-sqlite3 ships a prebuilt binary per platform; this build only needs linux-x64.
+  - '!node_modules/better-sqlite3/prebuilds/{darwin-*,win32-*,linux-arm64*,linuxmusl-*}'
+# Native modules can't load from inside app.asar.
+asarUnpack:
+  - '**/*.node'
+# The window icon and the drag icon fallback are read from disk (src/app/main.ts: iconPath).
+# resources/icon.png is made from resources/icon.svg with: vips copy resources/icon.svg resources/icon.png
+extraResources:
+  - from: resources/icon.png
+    to: icon.png
+# better-sqlite3 13 is Node-API: the same prebuilt binary works in Electron, no rebuild needed.
+npmRebuild: false
+# Use the Electron already in node_modules instead of downloading one.
+electronDist: node_modules/electron/dist
+linux:
+  target: dir
+  executableName: boogie-browser
+  icon: resources/icon.png
+  category: Graphics

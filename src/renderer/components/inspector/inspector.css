@@ -1,0 +1,37 @@
+/* Small shared pieces of the inspector (imported once by Inspector.svelte). Everything is under
+   .inspector so nothing leaks to the rest of the app. Colors come from styles/tokens.css. */
+.inspector .lbl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--fa);
+  margin: 14px 0 7px;
+}
+.inspector .lbl .r {
+  margin-left: auto;
+  font-weight: 400;
+}
+.inspector .chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.inspector .tg {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fa);
+  margin: 10px 0 5px;
+}
+.inspector .note {
+  font-size: 11px;
+  color: var(--fa);
+  line-height: 1.45;
+}
+.inspector button:focus-visible {
+  outline: 2px solid var(--bl);
+  outline-offset: 1px;
+}

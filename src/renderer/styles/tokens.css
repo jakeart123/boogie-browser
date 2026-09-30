@@ -1,0 +1,40 @@
+/* Design tokens from mockup #2 "Eagle, plus" (design/mockups/index.html, section .m2).
+   Owned by the orchestrator. Components use these variables, never raw colors. */
+:root {
+  --bg: #1d1e21; /* main background (grid) */
+  --side: #242529; /* sidebar + inspector */
+  --line: #303136; /* borders */
+  --hov: #2d2e33; /* hover */
+  --fld: #1a1b1e; /* input fields */
+  --tx: #e3e4e7; /* text */
+  --mu: #a2a4ab; /* muted text / icons */
+  --fa: #6f727a; /* faint text */
+  --bl: #2f80f7; /* accent blue (selection) */
+  --bls: rgba(47, 128, 247, 0.17);
+  --bl-soft: #7fb0fb; /* secondary selection ring */
+  --link: #9fc2ff;
+  --chip: #34353b;
+  --chip-line: #44464d;
+  --panel: #26272b; /* popovers, command palette */
+  --panel-line: #3d3e44;
+  --strip: #191a1d; /* status strip */
+  --thumb-bg: #121315;
+  --star: #f5b301;
+  --ag: #b49cff; /* agent activity */
+  --rm: #f0a43a; /* partner activity */
+  --ok: #3fbf6a;
+  --warn: #f0a43a;
+  --err: #ff5f57;
+  --radius: 6px;
+  --radius-lg: 12px;
+  --shadow-pop: 0 30px 80px rgba(0, 0, 0, 0.6);
+  --scrim: rgba(10, 10, 12, 0.55); /* behind dialogs, pickers and Triage's chooser */
+  --font: Inter, 'Noto Sans', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', 'Martian Mono', ui-monospace, monospace;
+  --sidebar-w: 248px;
+  --inspector-w: 300px;
+  --toolbar-h: 48px;
+  --filterbar-h: 40px;
+  --strip-h: 32px;
+  color-scheme: dark;
+}
