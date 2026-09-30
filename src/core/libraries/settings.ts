@@ -1,8 +1,9 @@
-// App settings at <config>/settings.json. The writable roots are the safety switch for real
-// libraries, so every load and every change pushes them into the write guard.
+// App settings at <config>/settings.json. The writable roots and the protected-places switch are
+// the safety switches for real libraries, so every load and every change pushes them into the
+// write guard.
 import { isAbsolute, join, resolve } from 'node:path';
 import type { AppSettings } from '../../shared/types';
-import { setWritableRoots } from '../safety/writeGuard';
+import { setAllowProtectedWrites, setWritableRoots } from '../safety/writeGuard';
 import { readJsonFile, writeFileAtomic } from './fsutil';
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -17,6 +18,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   mcpEnabled: true,
   mcpPort: 41597,
   writableRoots: [],
+  allowProtectedWrites: false,
   bulkConfirmThreshold: 500,
   windowsNameMaxChars: 120,
 };
@@ -53,6 +55,7 @@ const CHECKS: { [K in keyof AppSettings]-?: Check } = {
   mcpEnabled: bool,
   mcpPort: int(0, 65535),
   writableRoots: roots,
+  allowProtectedWrites: bool,
   bulkConfirmThreshold: int(1, 1_000_000),
   windowsNameMaxChars: int(20, 255),
 };
@@ -88,18 +91,22 @@ export interface SettingsStore {
 export function createSettingsStore(configDir: string): SettingsStore {
   const file = join(configDir, 'settings.json');
   let current: AppSettings = { ...DEFAULT_SETTINGS };
+  const armGuard = () => {
+    setWritableRoots(current.writableRoots);
+    setAllowProtectedWrites(current.allowProtectedWrites);
+  };
   return {
     get: () => current,
     async load() {
       current = mergeSettings(DEFAULT_SETTINGS, await readJsonFile(file), false);
-      setWritableRoots(current.writableRoots);
+      armGuard();
       return current;
     },
     async update(patch) {
       const next = mergeSettings(current, patch, true);
       await writeFileAtomic(file, JSON.stringify(next, null, 2) + '\n');
       current = next;
-      setWritableRoots(current.writableRoots);
+      armGuard();
       return current;
     },
   };

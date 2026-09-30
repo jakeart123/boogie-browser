@@ -1,11 +1,10 @@
 // The service: the glue between the UI / HTTP API / MCP and every other core module.
-import type { Actor } from '../../shared/types';
 import { appPaths } from '../paths';
 import type { AppPaths, CoreHost } from '../contracts';
 import { createKnownStore } from '../libraries/known';
 import { createSettingsStore } from '../libraries/settings';
 import type { DiscoveryOptions } from '../libraries/discovery';
-import { makeApi } from './api';
+import { makeApi, USER } from './api';
 import type { CoreDeps } from './deps';
 import { CoreService } from './host';
 
@@ -18,8 +17,7 @@ export interface CreateCoreHostOptions {
   discovery?: DiscoveryOptions & { home?: string };
 }
 
-/** The actor for everything the UI does. */
-export const USER: Actor = { kind: 'user', name: 'You' };
+export { USER };
 
 const DEP_KEYS: (keyof CoreDeps)[] = [
   'eagle',

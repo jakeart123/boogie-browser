@@ -28,9 +28,9 @@ const REASONS = {
   // Each reason reads well on its own (the banner) and after the UI's "Read-only: " (tooltips).
   user: 'You opened it for viewing only.',
   guard: 'Editing is off for this library. Allow it in Settings.',
-  // Allowed in Settings, but it sits in Dropbox or on a drive: the write guard needs its own switch.
+  // Allowed in Settings, but it sits in Dropbox or on a drive: that has its own switch in Settings.
   protected:
-    'This library is in a protected place (Dropbox or a drive), so editing stays off until write access for real libraries is switched on.',
+    'Editing is off for libraries in Dropbox and on external drives. Allow it in Settings.',
   eagle: 'Eagle is open on this library on this computer. Close Eagle to edit here.',
 } as const;
 

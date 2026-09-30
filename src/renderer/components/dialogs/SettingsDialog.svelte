@@ -1,6 +1,6 @@
 <script lang="ts">
   // Settings. Every change saves right away through library.updateSettings.
-  import { onDestroy } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import Check from '@lucide/svelte/icons/check';
   import Copy from '@lucide/svelte/icons/copy';
   import Plus from '@lucide/svelte/icons/plus';
@@ -13,8 +13,9 @@
   import type { AppSettings } from '../../../shared/types';
   import { errorText } from '../../lib/edit';
   import { LAYOUTS } from '../../lib/prefs';
+  import { onEscape } from './escape';
   import Modal from './Modal.svelte';
-  import { clampInt, extensionStatus, mcpCommand, mcpStatus } from './settings';
+  import { clampInt, extensionStatus, mcpCommand, mcpStatus, PROTECTED_WRITES } from './settings';
 
   const s = $derived(library.settings);
   const ports = $derived(library.status?.ports ?? null);
@@ -100,6 +101,27 @@
   }
   const removeRoot = (dir: string) =>
     s && save({ writableRoots: s.writableRoots.filter((r) => r !== dir) });
+
+  // Dropbox and external drives: turning it on waits for a yes below the box; off is immediate.
+  // The core re-decides the open library right away, and the banner follows its 'library' event.
+  let confirmingProtected = $state(false);
+  function toggleProtected(box: HTMLInputElement) {
+    if (!box.checked) return void save({ allowProtectedWrites: false });
+    box.checked = false; // stays off until confirmed
+    confirmingProtected = true;
+  }
+  async function allowProtected() {
+    confirmingProtected = false;
+    await save({ allowProtectedWrites: true });
+  }
+  // Escape cancels the question before it closes the dialog.
+  onMount(() =>
+    onEscape(() => {
+      if (!confirmingProtected) return false;
+      confirmingProtected = false;
+      return true;
+    }),
+  );
 
   // ── connect command ──
   let copied = $state(false);
@@ -287,6 +309,38 @@
           Dropbox, your partner sees every change. All changes can be undone from History.</span
         >
       </div>
+      <div class="dg-field">
+        <label class="dg-check">
+          <input
+            type="checkbox"
+            checked={s.allowProtectedWrites}
+            onchange={(e) => toggleProtected(e.currentTarget)}
+          />
+          <span>{PROTECTED_WRITES.label}<span class="dg-sub">{PROTECTED_WRITES.hint}</span></span>
+        </label>
+        {#if confirmingProtected}
+          <div
+            class="dg-note-box ask"
+            role="group"
+            aria-label={PROTECTED_WRITES.confirmTitle}
+            {@attach (node) => node.scrollIntoView({ block: 'nearest' })}
+          >
+            <TriangleAlert size={14} />
+            <div class="ask-body">
+              <strong>{PROTECTED_WRITES.confirmTitle}</strong>
+              <span>{PROTECTED_WRITES.confirmBody}</span>
+              <div class="dg-row ask-btns">
+                <button class="dg-btn sm" onclick={() => (confirmingProtected = false)}
+                  >Cancel</button
+                >
+                <button class="dg-btn sm pri" onclick={allowProtected}
+                  >{PROTECTED_WRITES.confirmLabel}</button
+                >
+              </div>
+            </div>
+          </div>
+        {/if}
+      </div>
     </section>
 
     <section class="dg-section">
@@ -351,6 +405,22 @@
     border-radius: 6px;
     background: var(--fld);
     border: 1px solid var(--line);
+  }
+  .ask {
+    margin-left: 22px;
+  }
+  .ask-body {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+  .ask-body strong {
+    font-weight: 600;
+  }
+  .ask-btns {
+    justify-content: flex-end;
+    margin-top: 6px;
   }
   .rp {
     flex: 1;

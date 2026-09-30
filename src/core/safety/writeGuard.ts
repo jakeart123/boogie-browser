@@ -6,9 +6,10 @@
 //    BOOGIE_WRITABLE_ROOTS, colon-separated). In development that is only this project's
 //    .tmp/ and research/sandbox/libs/.
 // 2. Protected places (Dropbox, removable/mounted drives, ~/Staging) stay blocked even if a
-//    root covers them, unless BOOGIE_ALLOW_PROTECTED=1 is set. You set that yourself once you
-//    decide Boogie may edit your real libraries. A Dropbox folder anywhere counts: Dropbox keeps
-//    a `.dropbox` FILE in its root folder (its settings folder in home is a `.dropbox` folder).
+//    root covers them, unless settings.allowProtectedWrites is on. Only the user turns that on,
+//    in Settings, once they decide Boogie may edit real libraries. A Dropbox folder anywhere
+//    counts: Dropbox keeps a `.dropbox` FILE in its root folder (its settings folder in home is a
+//    `.dropbox` folder).
 import { existsSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
@@ -33,6 +34,8 @@ const PROTECTED = [
 ];
 
 let roots: string[] = fromEnv();
+// Off until settings load says otherwise, so nothing protected is writable before then.
+let allowProtected = false;
 
 function fromEnv(): string[] {
   const raw = process.env.BOOGIE_WRITABLE_ROOTS;
@@ -85,14 +88,20 @@ export function writableRoots(): readonly string[] {
   return roots;
 }
 
+/** Rule 2's switch (from settings): may libraries in protected places be edited too? */
+export function setAllowProtectedWrites(on: boolean): void {
+  allowProtected = on;
+}
+
+export function protectedWritesAllowed(): boolean {
+  return allowProtected;
+}
+
 export function whyNotWritable(target: string): string | null {
   const t = canonical(target);
   if (!roots.some((r) => inside(t, r))) return 'outside the writable roots';
-  if (
-    process.env.BOOGIE_ALLOW_PROTECTED !== '1' &&
-    (PROTECTED.some((p) => inside(t, canonical(p))) || inDropbox(t))
-  ) {
-    return 'protected location (real libraries are read-only until you allow writes)';
+  if (!allowProtected && (PROTECTED.some((p) => inside(t, canonical(p))) || inDropbox(t))) {
+    return 'protected location (editing in Dropbox and on drives is off in Settings)';
   }
   return null;
 }

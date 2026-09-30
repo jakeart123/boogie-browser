@@ -26,3 +26,17 @@ export function mcpStatus(on: boolean, ports: AppStatus['ports'] | null): string
   if (!on) return 'Off.';
   return ports?.mcp ? `On. Listening on ${ports.mcp}.` : 'On, but not listening yet.';
 }
+
+/**
+ * Turning on edits in Dropbox and on external drives: the same words in Settings and in the
+ * read-only banner, so the one decision reads the same wherever it's made.
+ */
+export const PROTECTED_WRITES = {
+  label: 'Allow editing libraries in Dropbox and on external drives',
+  // The warning box above it already says the partner sees every change and History undoes it.
+  hint: 'Only for libraries in the folders above.',
+  confirmTitle: 'Allow editing in Dropbox and on drives?',
+  confirmBody:
+    'Boogie will change the real files of allowed libraries in Dropbox and on external drives. Your partner’s Eagle sees those changes once Dropbox syncs. Every change can be undone from History.',
+  confirmLabel: 'Allow editing',
+};

@@ -1,16 +1,22 @@
 // Read-only libraries in the real app: a library outside the places Boogie may edit opens
 // read-only with a banner; every way of changing it is refused with a reason and nothing on disk
 // changes; browsing still works; "Allow editing…" turns editing on; "Open read-only" from the
-// Libraries dialog works too.
+// Libraries dialog works too. A library in a Dropbox folder stays read-only until the Settings
+// switch for Dropbox and external drives is turned on (toolbar button, confirmation), and goes
+// back when it's turned off.
 import assert from 'node:assert/strict';
-import { readdirSync, statSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, before, describe } from 'node:test';
 import {
+  ROOT,
   WORK,
   freshLibrary,
+  itemMeta,
   launch,
   makeFixtures,
+  readJson,
   sleep,
   until,
   withShots,
@@ -133,6 +139,113 @@ describe('read-only libraries', () => {
     await until(
       async () => (await ctx.call('getLibraryState')).readOnly === false,
       'editable again',
+    );
+  });
+});
+
+describe('libraries in Dropbox and on drives', () => {
+  let ctx;
+  let lib;
+  const it = withShots(() => ctx);
+  // Its own folder with Dropbox's marker file, so no other test's library counts as Dropbox.
+  const dropboxDir = join(WORK, 'protected');
+
+  before(async () => {
+    rmSync(dropboxDir, { recursive: true, force: true }); // only ever WORK/protected
+    mkdirSync(dropboxDir, { recursive: true });
+    writeFileSync(join(dropboxDir, '.dropbox'), '{}');
+    lib = join(dropboxDir, 'shared.library');
+    execFileSync('cp', [
+      '-a',
+      '--reflink=auto',
+      join(ROOT, 'research/sandbox/templates/sample.library'),
+      lib,
+    ]);
+    // Allowed as an editable place, but no environment root covers it (the last test takes it out).
+    ctx = await launch({
+      name: 'protected',
+      open: lib,
+      settings: { writableRoots: [dropboxDir] },
+      env: { BOOGIE_WRITABLE_ROOTS: join(WORK, 'editable') },
+    });
+  });
+  after(() => ctx?.close());
+
+  it('the Settings button, then the switch with its confirmation, makes it editable at once', async () => {
+    const { win } = ctx;
+    assert.equal((await ctx.call('getLibraryState')).readOnlyKind, 'protected');
+    assert.match(await win.locator('.bar.warn').innerText(), /Dropbox and on external drives/);
+
+    await win.locator('.tb').getByRole('button', { name: 'Settings' }).click();
+    const dlg = win.locator('.dg-panel');
+    const box = dlg
+      .locator('label.dg-check', { hasText: 'Allow editing libraries in Dropbox' })
+      .locator('input');
+    await box.click();
+    // Nothing changes until the question is answered.
+    const ask = dlg.locator('.ask');
+    assert.match(await ask.innerText(), /Allow editing in Dropbox and on drives\?/);
+    assert.equal(await box.isChecked(), false);
+    assert.equal((await ctx.call('getSettings')).allowProtectedWrites, false);
+    await ask.getByRole('button', { name: 'Allow editing' }).click();
+
+    await until(async () => (await ctx.call('getLibraryState')).readOnly === false, 'editable');
+    assert.equal(await box.isChecked(), true);
+    assert.equal(readJson(join(ctx.home, 'config/settings.json')).allowProtectedWrites, true);
+    await dlg.getByRole('button', { name: 'Done' }).click();
+    await until(async () => !(await win.locator('.bar.warn').count()), 'the banner to go');
+    // A real edit lands on disk.
+    const [id] = (await ctx.call('query', { scope: { kind: 'all' }, filter: {}, sort: null })).ids;
+    await ctx.call('updateItems', [id], { star: 4 });
+    await until(() => itemMeta(lib, id).star === 4, 'the rating on disk');
+  });
+
+  it('turning it off needs no question and makes it read-only again; the banner turns it back on', async () => {
+    const { win } = ctx;
+    await win.locator('.scroller').focus();
+    await win.keyboard.press('Control+,');
+    const box = win
+      .locator('.dg-panel label.dg-check', { hasText: 'Allow editing libraries in Dropbox' })
+      .locator('input');
+    await box.uncheck();
+    await until(
+      async () => (await ctx.call('getLibraryState')).readOnlyKind === 'protected',
+      'read-only again',
+    );
+    await win.keyboard.press('Escape');
+    const banner = win.locator('.bar.warn');
+    await until(async () => (await banner.count()) === 1, 'the banner');
+
+    await banner.getByRole('button', { name: 'Allow editing…' }).click();
+    await win.locator('.dg-panel').getByRole('button', { name: 'Allow editing' }).click();
+    await until(async () => (await ctx.call('getLibraryState')).readOnly === false, 'editable');
+    await until(async () => !(await banner.count()), 'the banner to go');
+    assert.equal((await ctx.call('getSettings')).allowProtectedWrites, true);
+  });
+
+  it('a Dropbox library not allowed yet: "Allow editing…" asks for the folder, then for Dropbox', async () => {
+    const { win } = ctx;
+    await ctx.call('setSettings', { writableRoots: [], allowProtectedWrites: false });
+    const banner = win.locator('.bar.warn');
+    await until(
+      async () => /Editing is off for this library/.test(await banner.innerText()),
+      'guard',
+    );
+    await banner.getByRole('button', { name: 'Allow editing…' }).click();
+    const dlg = win.locator('.dg-panel');
+    assert.match(await dlg.innerText(), /Allow editing this library\?/);
+    await dlg.getByRole('button', { name: 'Allow editing' }).click();
+    await until(
+      async () => /Allow editing in Dropbox and on drives\?/.test(await dlg.innerText()),
+      'the second question',
+    );
+    await dlg.getByRole('button', { name: 'Allow editing' }).click();
+    await until(async () => (await ctx.call('getLibraryState')).readOnly === false, 'editable');
+    const settings = await ctx.call('getSettings');
+    assert.equal(settings.allowProtectedWrites, true);
+    assert.ok(
+      settings.writableRoots.some((r) => lib.startsWith(r)),
+      JSON.stringify(settings),
     );
   });
 });

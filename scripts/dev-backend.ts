@@ -86,12 +86,11 @@ export function devBackend(): Plugin {
       const sources = main === other ? [main] : [main, other];
       const [mainCopy, ...otherCopies] = stage(dir, sources, process.env.BOOGIE_DEV_REUSE === '1');
 
-      // Before the core loads: its write guard reads these once. Only the copy is writable, and
-      // protected places (Dropbox, mounted drives) stay blocked whatever the shell had set.
+      // Before the core loads: its write guard reads these once. Only the copy is writable.
+      // (The switch for protected places comes from this private home's settings.json: off.)
       const home = join(dir, 'home');
       process.env.BOOGIE_HOME = home;
       process.env.BOOGIE_WRITABLE_ROOTS = dir;
-      delete process.env.BOOGIE_ALLOW_PROTECTED;
 
       const load = (p: string) => server.ssrLoadModule(join(ROOT, p));
       const { createCoreHost } = await load('src/core/service/index.ts');

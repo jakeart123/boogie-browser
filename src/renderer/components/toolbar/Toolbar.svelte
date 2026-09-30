@@ -1,7 +1,7 @@
 <script lang="ts">
   // The 48 px bar above the grid: panel toggles, back/forward, where you are (with view options),
-  // thumbnail zoom, sort, color search, filters, the command bar and "+". Its empty middle is the
-  // window's drag region. Also registers the app-wide shortcuts (see globalCommands.ts).
+  // thumbnail zoom, sort, color search, filters, the command bar, "+" and Settings. Its empty
+  // middle is the window's drag region. Also registers the app-wide shortcuts (see globalCommands.ts).
   import type { Component } from 'svelte';
   import ArrowDownWideNarrow from '@lucide/svelte/icons/arrow-down-wide-narrow';
   import ArrowUpNarrowWide from '@lucide/svelte/icons/arrow-up-narrow-wide';
@@ -18,6 +18,7 @@
   import Pipette from '@lucide/svelte/icons/pipette';
   import Plus from '@lucide/svelte/icons/plus';
   import Search from '@lucide/svelte/icons/search';
+  import Settings from '@lucide/svelte/icons/settings';
   import Shuffle from '@lucide/svelte/icons/shuffle';
   import Sparkles from '@lucide/svelte/icons/sparkles';
   import Tag from '@lucide/svelte/icons/tag';
@@ -193,6 +194,13 @@
     disabled={noLib}
     aria-haspopup="menu"
     onclick={(e) => openMenuBelow(e.currentTarget, addMenu())}><Plus size={17} /></button
+  >
+  <!-- Always here (the sidebar can be hidden), so Settings never depends on knowing Ctrl+K. -->
+  <button
+    class="ib"
+    title="Settings (Ctrl+,)"
+    aria-label="Settings"
+    onclick={() => ui.openDialog('settings')}><Settings size={16} /></button
   >
   <button
     class="ib"

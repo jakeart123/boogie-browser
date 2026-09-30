@@ -49,7 +49,7 @@ Everything the app writes lands in `.tmp/electron-qa/`:
 | `dupes.e2e.mjs`      | duplicate finder: exact, similar, merge, merge all, undo                                                                          |
 | `pickers.e2e.mjs`    | tag window, folder picker, Shift+D, go to folder, move, rename, batch rename, palette, shortcuts                                  |
 | `smart-tags.e2e.mjs` | smart folders, quick access, tag manager, tag groups                                                                              |
-| `readonly.e2e.mjs`   | a library outside the editable places, "Allow editing…", "Open read-only"                                                         |
+| `readonly.e2e.mjs`   | a library outside the editable places, "Allow editing…", "Open read-only", the Settings button and the Dropbox and drives switch  |
 | `servers.e2e.mjs`    | Eagle HTTP API and extension port (moved with `BOOGIE_EAGLE_API_PORT` / `BOOGIE_EXTENSION_PORT`), MCP over raw JSON-RPC, Settings |
 
 `lib/harness.mjs` launches the app (`launch({ name, open, readOnly, settings, env })`) and has

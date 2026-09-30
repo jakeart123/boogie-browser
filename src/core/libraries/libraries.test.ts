@@ -1,7 +1,12 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { setWritableRoots, writableRoots } from '../safety/writeGuard';
+import {
+  protectedWritesAllowed,
+  setAllowProtectedWrites,
+  setWritableRoots,
+  writableRoots,
+} from '../safety/writeGuard';
 import { discoverLibraries, winePathToLinux } from './discovery';
 import { createKnownStore } from './known';
 import { DEFAULT_SETTINGS, createSettingsStore } from './settings';
@@ -14,7 +19,10 @@ beforeAll(() => {
   dir = mkdtempSync(join(base, 'libraries-'));
 });
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
-afterEach(() => setWritableRoots([]));
+afterEach(() => {
+  setWritableRoots([]);
+  setAllowProtectedWrites(false);
+});
 
 function fakeLibrary(path: string): void {
   mkdirSync(join(path, 'images'), { recursive: true });
@@ -86,6 +94,29 @@ describe('settings', () => {
     await again.load();
     expect(again.get().writableRoots).toEqual([root]);
     expect(writableRoots()).toContain(resolve(root));
+  });
+
+  it('the Dropbox and drives switch saves, reloads, and arms the write guard both ways', async () => {
+    const cfg = join(dir, 'settings-protected');
+    const store = createSettingsStore(cfg);
+    expect((await store.load()).allowProtectedWrites).toBe(false);
+    expect(protectedWritesAllowed()).toBe(false);
+    await expect(store.update({ allowProtectedWrites: 'yes' as never })).rejects.toThrow(
+      /allowProtectedWrites/,
+    );
+
+    await store.update({ allowProtectedWrites: true });
+    expect(protectedWritesAllowed()).toBe(true);
+    expect(JSON.parse(readFileSync(join(cfg, 'settings.json'), 'utf8')).allowProtectedWrites).toBe(
+      true,
+    );
+    setAllowProtectedWrites(false); // as a fresh start of the app would be
+    const again = createSettingsStore(cfg);
+    expect((await again.load()).allowProtectedWrites).toBe(true);
+    expect(protectedWritesAllowed()).toBe(true);
+
+    await again.update({ allowProtectedWrites: false });
+    expect(protectedWritesAllowed()).toBe(false);
   });
 });
 

@@ -16,6 +16,12 @@ import * as tags from './tagOps';
 import { setTagStarred } from './tagsFile';
 import * as undoOps from './undo';
 
+/** The actor for everything the UI does. */
+export const USER: Actor = { kind: 'user', name: 'You' };
+
+/** Where Boogie may write. Only the UI's own actor changes these (see setSettings). */
+const SAFETY_SETTINGS = ['writableRoots', 'allowProtectedWrites'] as const;
+
 /** Every method is an own property (the IPC layer only calls own functions of `api`). */
 export function makeApi(svc: CoreService, actor: Actor): CoreApi {
   const S = () => svc.need();
@@ -100,8 +106,9 @@ export function makeApi(svc: CoreService, actor: Actor): CoreApi {
     getStatus: () => svc.getStatus(),
     getSettings: async () => svc.getSettings(),
     // Where Boogie may write is the safety switch: agents and the browser extension never move it.
+    // The extension acts as a 'user' too (its saves are yours), so this checks for the UI itself.
     setSettings: async (patch) => {
-      if (actor.kind !== 'user' && patch.writableRoots !== undefined) {
+      if (actor !== USER && SAFETY_SETTINGS.some((k) => patch[k] !== undefined)) {
         throw new Error('Only you can choose where Boogie may edit. Change it in Settings.');
       }
       return svc.setSettings(patch);

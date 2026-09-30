@@ -9,13 +9,15 @@
   import { library } from '../../lib/stores/library.svelte';
   import { errorText } from '../../lib/edit';
   import { ui } from '../../lib/stores/ui.svelte';
+  import { PROTECTED_WRITES } from '../dialogs/settings';
 
   const st = $derived(library.state);
   const reason = $derived(
     st?.readOnly ? (st.readOnlyReason ?? 'This library is read-only.') : null,
   );
-  // Why it's read-only, as the core says it in code: 'guard' (not in the editable places yet) can
-  // be allowed from here; 'protected' places (Dropbox, drives) can't be yet.
+  // Why it's read-only, as the core says it in code: 'guard' (not in the editable places yet) and
+  // 'protected' (allowed, but in Dropbox or on a drive, which has its own switch in Settings) can
+  // both be allowed from here.
   const kind = $derived(st?.readOnly ? (st.readOnlyKind ?? null) : null);
   const eagleHere = $derived(
     !!st && !!library.status?.eagle.running && library.status.eagle.openLibraryPath === st.ref.path,
@@ -61,22 +63,41 @@
       const roots = library.settings?.writableRoots ?? (await api.getSettings()).writableRoots;
       if (!roots.includes(path)) await library.updateSettings({ writableRoots: [...roots, path] });
       await library.open(path);
-      if (!library.readOnly) ui.toast(`Editing is on for ${quoted(name)}`, { kind: 'ok' });
-      else if (library.state?.readOnlyKind === 'protected') {
-        // The core keeps some places (Dropbox, external drives, ~/Staging) read-only whatever the settings say.
-        ui.toast(
-          'Still read-only. Boogie won’t edit libraries in protected places like Dropbox or external drives yet.',
-          { kind: 'warn' },
-        );
-      } else
-        ui.toast(`Still read-only. ${library.state?.readOnlyReason ?? ''}`.trim(), {
-          kind: 'warn',
-        });
+      // In Dropbox or on a drive, the folder alone isn't enough: ask for that switch next.
+      if (library.state?.readOnlyKind === 'protected') await allowProtected();
+      else tellResult(name);
     } catch (e) {
       ui.toast(`Couldn’t turn editing on. ${errorText(e)}`, { kind: 'error' });
     } finally {
       busy = false;
     }
+  }
+
+  /** The Settings switch for Dropbox and external drives, with the same question Settings asks. */
+  async function allowProtected(): Promise<void> {
+    if (!st) return;
+    const { name } = st.ref;
+    const { confirmTitle, confirmBody, confirmLabel } = PROTECTED_WRITES;
+    if (!(await ui.confirm(confirmTitle, confirmBody, confirmLabel))) return;
+    busy = true;
+    try {
+      await library.updateSettings({ allowProtectedWrites: true });
+      // The core reopened the library for editing while saving; take its answer now rather than
+      // wait for the 'library' event.
+      const now = await api.getLibraryState();
+      if (now) library.state = now;
+      tellResult(name);
+    } catch (e) {
+      ui.toast(`Couldn’t turn editing on. ${errorText(e)}`, { kind: 'error' });
+    } finally {
+      busy = false;
+    }
+  }
+
+  function tellResult(name: string): void {
+    if (!library.readOnly) ui.toast(`Editing is on for ${quoted(name)}`, { kind: 'ok' });
+    else
+      ui.toast(`Still read-only. ${library.state?.readOnlyReason ?? ''}`.trim(), { kind: 'warn' });
   }
 </script>
 
@@ -86,6 +107,8 @@
     <span class="msg">{reason}</span>
     {#if kind === 'guard'}
       <button class="act" disabled={busy} onclick={allowEditing}>Allow editing…</button>
+    {:else if kind === 'protected'}
+      <button class="act" disabled={busy} onclick={allowProtected}>Allow editing…</button>
     {:else if kind === 'eagle' || eagleHere}
       <button class="act" disabled={busy} onclick={reopen}>Check again</button>
     {:else if kind === 'user'}

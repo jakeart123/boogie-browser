@@ -14,13 +14,13 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { JobProgress, LibraryState } from '../../shared/types';
 import type { EagleLibrary, EagleLibraryFactory } from '../contracts';
 import { eagleLibraries } from '../eagle';
 import { openIndex } from '../index';
 import { libraryRef } from '../libraryId';
-import { setWritableRoots } from '../safety/writeGuard';
+import { setAllowProtectedWrites, setWritableRoots } from '../safety/writeGuard';
 import { decideReadOnly } from './session';
 import { openSandbox, sandboxAvailable, type Sandbox } from './testSandbox';
 import type { Env } from './types';
@@ -114,8 +114,7 @@ describe.skipIf(!sandboxAvailable)('opening and read-only', () => {
     });
   });
 
-  it('tells a library in Dropbox apart: allowing it in Settings is not enough', async () => {
-    vi.stubEnv('BOOGIE_ALLOW_PROTECTED', '');
+  it('tells a library in Dropbox apart: allowing its folder is not enough without the Dropbox switch', async () => {
     const ref = libraryRef(join(homedir(), 'Dropbox/Some Team/Some.library')); // only the path is judged
     const env = {
       deps: { eagleMonitor: { check: async () => ({ running: false, openLibraryPath: null }) } },
@@ -125,11 +124,52 @@ describe.skipIf(!sandboxAvailable)('opening and read-only', () => {
       setWritableRoots([]);
       expect(await decide()).toMatchObject({ kind: 'guard', reason: /^Editing is off/ });
       setWritableRoots([join(homedir(), 'Dropbox')]);
-      expect(await decide()).toMatchObject({ kind: 'protected', reason: /protected place/ });
+      expect(await decide()).toMatchObject({ kind: 'protected', reason: /Dropbox .* Settings/ });
+      setAllowProtectedWrites(true);
+      expect(await decide()).toMatchObject({ kind: null, reason: null });
     } finally {
       setWritableRoots([]);
-      vi.unstubAllEnvs();
+      setAllowProtectedWrites(false);
     }
+  });
+
+  it('the Dropbox switch in Settings turns a library there editable and back, without reopening by hand', async () => {
+    const s = await open({ open: false });
+    writeFileSync(join(s.dir, '.dropbox'), '{}'); // the sandbox folder is now a Dropbox folder
+    expect(await s.host.api.openLibrary(s.libPath)).toMatchObject({
+      readOnly: true,
+      readOnlyKind: 'protected',
+    });
+    await s.host.api.refresh({ full: true }); // join the first index sync
+    const [a] = (await s.host.api.query({ scope: { kind: 'all' }, filter: {}, sort: null })).ids;
+    const star = s.read(a).star === 2 ? 3 : 2;
+    await expect(s.host.api.updateItems([a], { star })).rejects.toThrow(/Editing is off/);
+
+    await s.host.api.setSettings({ allowProtectedWrites: true });
+    expect(await s.host.api.getLibraryState()).toMatchObject({
+      readOnly: false,
+      readOnlyKind: null,
+    });
+    expect((await s.host.api.updateItems([a], { star })).changed).toBe(1);
+    expect(s.read(a).star).toBe(star);
+
+    await s.host.api.setSettings({ allowProtectedWrites: false });
+    expect(await s.host.api.getLibraryState()).toMatchObject({
+      readOnly: true,
+      readOnlyKind: 'protected',
+    });
+    // The edit's mtime.json raise (normally batched) went out before the guard closed, so the
+    // partner's Eagle still sees it.
+    const mtime = JSON.parse(readFileSync(join(s.libPath, 'mtime.json'), 'utf8'));
+    expect(mtime[a]).toBe(s.read(a).lastModified);
+    await expect(s.host.api.updateItems([a], { star: 5 })).rejects.toThrow(/Editing is off/);
+    expect(s.read(a).star).toBe(star);
+    // 'library' events told the UI both times (the banner follows them).
+    const kinds = s.events
+      .filter((e) => e.name === 'library')
+      .map((e) => (e.payload as LibraryState).readOnlyKind);
+    expect(kinds).toContain(null);
+    expect(kinds.at(-1)).toBe('protected');
   });
 
   it('stops a running import between files when Eagle opens the library here', async () => {

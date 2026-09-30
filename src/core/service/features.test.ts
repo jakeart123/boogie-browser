@@ -1,13 +1,16 @@
 // Round 4 features on the REAL core (adapter, index, journal, media, watcher) against copies of
 // the sample library under .tmp/service-features/: starred tags, saved filters, tag rename and
 // delete reaching folders and tags.json, a Dropbox conflicted root copy, "Add to other library",
-// custom thumbnails, Boogie's own thumbnails for icon-only types, and pausing agents.
+// custom thumbnails, Boogie's own thumbnails for icon-only types, pausing agents, and keeping the
+// write-safety settings out of agents' reach.
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { EagleRootRecord, ImportResult } from '../../shared/types';
+import { CLIENT_ACTOR, EXTENSION_ACTOR } from '../http/context';
 import { writeZip } from '../media/testFixtures';
+import { protectedWritesAllowed } from '../safety/writeGuard';
 import { openSandbox, sandboxAvailable, type Sandbox } from './testSandbox';
 
 let sb: Sandbox | null = null;
@@ -545,6 +548,33 @@ describe.skipIf(!sandboxAvailable)('small things', () => {
     ).rejects.toThrow(/Only you/);
     await host.api.setAgentPaused('Claude', false);
     expect(host.isAgentPaused?.('Claude')).toBe(false);
+  });
+
+  it('agents, Eagle API clients and the browser extension can’t change where Boogie may edit', async () => {
+    const s = await open();
+    const before = await s.host.api.getSettings();
+    const others = [
+      { kind: 'agent', name: 'Claude (MCP)' } as const,
+      CLIENT_ACTOR,
+      EXTENSION_ACTOR,
+    ];
+    for (const actor of others) {
+      const api = s.host.as(actor);
+      await expect(api.setSettings({ allowProtectedWrites: true })).rejects.toThrow(/Only you/);
+      await expect(api.setSettings({ writableRoots: ['/'] })).rejects.toThrow(/Only you/);
+      // Mixed in with a harmless change, the whole patch is refused.
+      await expect(api.setSettings({ thumbSize: 300, allowProtectedWrites: true })).rejects.toThrow(
+        /Only you/,
+      );
+    }
+    expect(await s.host.api.getSettings()).toEqual(before);
+    expect(protectedWritesAllowed()).toBe(false);
+    // You (the UI) can.
+    expect(
+      (await s.host.api.setSettings({ allowProtectedWrites: true })).allowProtectedWrites,
+    ).toBe(true);
+    expect(protectedWritesAllowed()).toBe(true);
+    await s.host.api.setSettings({ allowProtectedWrites: false });
   });
 
   it('a big API batch keeps every id in entry order', async () => {

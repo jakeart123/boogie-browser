@@ -225,11 +225,18 @@ export class CoreService {
   }
 
   async setSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
-    const before = this.settings.get().writableRoots.join('\n');
+    const guard = (s: AppSettings) => [s.allowProtectedWrites, ...s.writableRoots].join('\n');
+    const before = guard(this.settings.get());
+    // Edits made while writing was allowed still owe mtime.json their raises (batched ~1 s). Write
+    // them before the guard may close, or the partner's Eagle never notices those edits. A failure
+    // shows as the library's write problem; it mustn't stop the settings change.
+    const s = this.session;
+    const touchesGuard = 'writableRoots' in patch || 'allowProtectedWrites' in patch;
+    if (touchesGuard && s && !s.closed && !s.readOnly) await s.lib.flushMtime().catch(() => {});
     await this.settings.update(patch);
     // Allowing (or forbidding) writes can change what the open library may do. (The name cap is
     // handed to the adapter and importer when a library opens, so it applies from the next open.)
-    if (this.settings.get().writableRoots.join('\n') !== before) await this.recheckReadOnly();
+    if (guard(this.settings.get()) !== before) await this.recheckReadOnly();
     return this.getSettings();
   }
 

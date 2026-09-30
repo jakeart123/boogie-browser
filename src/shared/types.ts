@@ -636,6 +636,11 @@ export interface AppSettings {
   mcpPort: number;
   /** Absolute roots Boogie may write inside. Everything else opens read-only. */
   writableRoots: string[];
+  /**
+   * Libraries in Dropbox or on external drives may be edited too (still only inside
+   * writableRoots). Default false. Only the user changes it, in Settings; agents can't.
+   */
+  allowProtectedWrites: boolean;
   bulkConfirmThreshold: number; // default 500
   windowsNameMaxChars: number; // cap for imported/renamed names (path length on the partner's Windows)
 }

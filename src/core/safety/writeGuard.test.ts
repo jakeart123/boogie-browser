@@ -2,12 +2,20 @@ import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { assertWritable, isWritable, setWritableRoots } from './writeGuard';
+import {
+  assertWritable,
+  isWritable,
+  setAllowProtectedWrites,
+  setWritableRoots,
+} from './writeGuard';
 
 const tmp = resolve('.tmp/writeguard-test');
 
 describe('writeGuard', () => {
-  afterEach(() => setWritableRoots([]));
+  afterEach(() => {
+    setWritableRoots([]);
+    setAllowProtectedWrites(false);
+  });
 
   it('blocks everything when no roots are set', () => {
     setWritableRoots([]);
@@ -36,6 +44,25 @@ describe('writeGuard', () => {
     setWritableRoots([tmp]);
     expect(isWritable(join(box, 'Libs/A.library/mtime.json'))).toBe(false);
     expect(isWritable(join(notBox, 'B.library/mtime.json'))).toBe(true);
+  });
+
+  it('the protected-writes setting opens protected places inside a root, and only those', () => {
+    const box = join(tmp, 'Team Dropbox');
+    mkdirSync(box, { recursive: true });
+    writeFileSync(join(box, '.dropbox'), '{}');
+    const inHomeDropbox = join(homedir(), 'Dropbox/Shared/A.library/mtime.json');
+    const inMarkedDropbox = join(box, 'B.library/mtime.json');
+    const plain = join(tmp, 'plain/C.library/mtime.json');
+    setWritableRoots([tmp, join(homedir(), 'Dropbox')]);
+
+    expect([inHomeDropbox, inMarkedDropbox, plain].map(isWritable)).toEqual([false, false, true]);
+    setAllowProtectedWrites(true);
+    expect([inHomeDropbox, inMarkedDropbox, plain].map(isWritable)).toEqual([true, true, true]);
+    // Still only inside the roots: a drive nobody allowed stays blocked.
+    expect(isWritable('/run/media/someone/Drive/D.library/mtime.json')).toBe(false);
+    setAllowProtectedWrites(false);
+    expect(() => assertWritable(inMarkedDropbox)).toThrow(/protected/);
+    expect(isWritable(plain)).toBe(true);
   });
 
   it('follows symlinks out of a root', () => {

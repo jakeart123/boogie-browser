@@ -47,10 +47,12 @@ handy for UI work.
 
 ## Safety
 
-Every write goes through one guard. Anything inside a Dropbox folder, `~/Dropbox`, `~/Staging`,
-`/run/media`, `/media` or `/mnt` is read-only unless you start the app with
-`BOOGIE_ALLOW_PROTECTED=1`, and any library can be set to read-only by hand. Keep a backup of any
-library you care about before letting a new program edit it.
+Every write goes through one guard. A library opens for editing only inside a folder you allow in
+Settings ("Libraries Boogie may edit"). Anything inside a Dropbox folder, `~/Dropbox`, `~/Staging`,
+`/run/media`, `/media` or `/mnt` stays read-only even then, until you also turn on "Allow editing
+libraries in Dropbox and on external drives" in the same place. AI agents and the HTTP API can't
+change either one. Any library can be set to read-only by hand. Keep a backup of any library you
+care about before letting a new program edit it.
 
 ## Connecting an agent
 
