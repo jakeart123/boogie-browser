@@ -10,6 +10,12 @@ and up) stay fast.
 
 This is an independent project. It is not made by or affiliated with the makers of Eagle.
 
+![A folder of paintings in the grid, with one selected and its details in the inspector](docs/screenshots/browse.jpg)
+
+| Full-screen viewer                         | Search by color                                       |
+| ------------------------------------------ | ----------------------------------------------------- |
+| ![The viewer](docs/screenshots/viewer.jpg) | ![Search by color](docs/screenshots/color-search.jpg) |
+
 ## What it does
 
 - Browse in justified, masonry, grid or list layouts, with a full-screen viewer and an inspector
