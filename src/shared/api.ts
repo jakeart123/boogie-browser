@@ -195,6 +195,10 @@ export interface CoreApi {
   /** Dropbox conflicted copy of the root metadata.json: what differs, and apply picked changes (never edits the copy). */
   planRootConflict(relPath: string): Promise<RootConflictPlan>;
   applyRootConflict(relPath: string, pickedIds: string[]): Promise<MutationResult>;
+  /** Settle a conflicted copy's questions (ConflictFile.questions): take the copy's value for
+   *  `takeCopy` (question ids), keep the library's for the rest, then move the copy out of the
+   *  library into Boogie's store. One undoable history entry. */
+  resolveConflict(relPath: string, takeCopy: string[]): Promise<MutationResult>;
   /** "Add to other library": copy items (files + metadata, new ids) into another library. */
   copyToLibrary(
     ids: string[],

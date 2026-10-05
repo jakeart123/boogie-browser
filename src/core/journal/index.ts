@@ -59,6 +59,11 @@ export interface JournalStore extends Journal {
   clearAllPartnerPending(libraryId: string): void;
   countStale(libraryId: string, since: number): number;
   markKeptTheirs(groupId: string): HistoryEntry | null;
+  versionsOf(
+    libraryId: string,
+    relPath: string,
+    opts: { until: number; limit?: number },
+  ): { at: number; text: string }[];
 }
 
 const MAX_ITEM_IDS = 500;
@@ -432,6 +437,60 @@ class JournalImpl implements JournalStore {
       )
       .get(id) as { text: string | null; seen: number } | undefined;
     return row ? { base: row.text ?? null, seen: row.seen === 1 } : undefined;
+  }
+
+  // ───────────────────────── versions of one file ─────────────────────────
+
+  /**
+   * Every distinct text this file is known to have had, before and after, ours and outside, in
+   * groups recorded at or before `until` (the group's time), newest first: the bases a conflicted
+   * copy is merged against (docs/specs/merge.md). A text recorded again later still counts from
+   * when it first was.
+   *
+   * What an automatic conflict merge wrote is a version like any other. It has to be: when that
+   * merge is undone and the partner's Eagle (which never showed the undo) saves the same values
+   * again, this is the version that says they were here before and were taken back, so they become
+   * a question instead of being taken a second time.
+   */
+  versionsOf(
+    libraryId: string,
+    relPath: string,
+    opts: { until: number; limit?: number },
+  ): { at: number; text: string }[] {
+    const db = this.db(libraryId, false);
+    if (!db) return [];
+    const path = relPath.replace(/\\/g, '/');
+    const limit = Math.max(1, Math.min(opts.limit ?? 50, 500));
+    // The item id index finds an item file's rows; root files have none.
+    const id = /^images\/([^/]+)\.info\//.exec(path)?.[1] ?? null;
+    const where = id === null ? 'c.item_id IS NULL' : 'c.item_id = @id';
+    // After comes before before within a group (a later seq is a later text).
+    const rows = db
+      .prepare(
+        `SELECT g.at AS at, b.hash AS hash, b.text AS text FROM (
+           SELECT group_id, seq * 2 + 1 AS rank, after_hash AS hash FROM changes c
+             WHERE ${where} AND c.rel_path = @path AND c.after_hash IS NOT NULL
+           UNION ALL
+           SELECT group_id, seq * 2 AS rank, before_hash AS hash FROM changes c
+             WHERE ${where} AND c.rel_path = @path AND c.before_hash IS NOT NULL
+         ) c JOIN groups g ON g.id = c.group_id JOIN blobs b ON b.hash = c.hash
+         WHERE g.at <= @until
+         ORDER BY g.at DESC, c.rank DESC`,
+      )
+      .iterate({ path, id, until: opts.until }) as Iterable<{
+      at: number;
+      hash: string;
+      text: string;
+    }>;
+    const seen = new Set<string>();
+    const out: { at: number; text: string }[] = [];
+    for (const r of rows) {
+      if (seen.has(r.hash)) continue;
+      seen.add(r.hash);
+      out.push({ at: r.at, text: r.text });
+      if (out.length >= limit) break;
+    }
+    return out;
   }
 
   // ───────────────────────── stale-overwrite entries ─────────────────────────

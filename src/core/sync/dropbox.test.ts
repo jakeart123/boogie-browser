@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { createDropboxStatus, parseDropboxStatus } from './dropbox';
+import { createDropboxStatus, parseDropboxStatus, parseFileStatus } from './dropbox';
 import { SCRATCH } from './testUtil';
 
 mkdirSync(SCRATCH, { recursive: true });
@@ -38,10 +38,12 @@ describe('parseDropboxStatus', () => {
     ["Dropbox isn't running!", 'offline', "Dropbox isn't running!"],
     [
       'Waiting to be linked to a Dropbox account...\nTo link this computer, visit https://x',
-      'unknown',
+      'offline',
       'Waiting to be linked to a Dropbox account...',
     ],
-    ['Syncing paused', 'unknown', 'Syncing paused'],
+    ['Syncing paused', 'offline', 'Syncing paused'],
+    ['Uploading 1 file (paused.png)', 'syncing', 'Uploading 1 file (paused.png)'], // a file name is not a state
+    ['Something new', 'unknown', 'Something new'],
     ['', 'unknown', 'Dropbox status unavailable'],
   ])('%j', (out, state, detail) => {
     expect(parseDropboxStatus(out)).toEqual({ state, detail });
@@ -99,5 +101,47 @@ describe('createDropboxStatus', () => {
     t += 200;
     await s.check();
     expect(readFileSync(counter, 'utf8').trim().split('\n')).toHaveLength(2);
+  });
+});
+
+describe('fileStatus', () => {
+  const lib = '/sync/Dropbox/Shared.library';
+  const a = `${lib}/metadata.json`;
+  const b = `${lib}/images/X.info/metadata (Sam's conflicted copy 2026-09-28).json`;
+  const c = `${lib}/images/Y.info/Y_thumbnail.png`;
+
+  it('reads one `path: status` line per path, and anything odd is unknown', () => {
+    const out = `${a}:    up to date\n${b}:   syncing\n${c}:   unwatched\n`;
+    expect(parseFileStatus(out, [a, b, c])).toEqual({
+      [a]: 'upToDate',
+      [b]: 'syncing',
+      [c]: 'unknown',
+    });
+    expect(parseFileStatus('', [a])).toEqual({ [a]: 'unknown' });
+    expect(parseFileStatus(`${a}: Downloading 1 file\n`, [a, b])).toEqual({
+      [a]: 'syncing',
+      [b]: 'unknown',
+    });
+  });
+
+  it('runs `filestatus` with the paths on the client', async () => {
+    // The fake prints a status line per path it was given, so this proves the arguments arrive whole.
+    const bin = fakeBin(
+      'for p in "$@"; do [ "$p" = filestatus ] && continue; case "$p" in *copy*) echo "$p:   syncing";; *) echo "$p:   up to date";; esac; done',
+    );
+    const dropbox = createDropboxStatus({ binDirs: [bin] });
+    expect(await dropbox.fileStatus!([a, b])).toEqual({ [a]: 'upToDate', [b]: 'syncing' });
+    expect(await dropbox.fileStatus!([])).toEqual({});
+  });
+
+  it('is unknown with no client, a failing client, and a hanging one (and does not wait for it)', async () => {
+    const none = createDropboxStatus({ binDirs: [join(scratch, 'empty')] });
+    expect(await none.fileStatus!([a])).toEqual({ [a]: 'unknown' });
+    const failing = createDropboxStatus({ binDirs: [fakeBin('exit 3')] });
+    expect(await failing.fileStatus!([a])).toEqual({ [a]: 'unknown' });
+    const hang = createDropboxStatus({ binDirs: [fakeBin('sleep 31')], timeoutMs: 300 });
+    const t0 = Date.now();
+    expect(await hang.fileStatus!([a])).toEqual({ [a]: 'unknown' });
+    expect(Date.now() - t0).toBeLessThan(1500);
   });
 });

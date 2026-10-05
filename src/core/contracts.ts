@@ -287,6 +287,14 @@ export interface Journal extends JournalSink {
   /** The library stopped being shared: nothing is pending any more. */
   clearAllPartnerPending?(libraryId: string): void;
   getEntry(groupId: string): HistoryEntry | null;
+  /** Every distinct text this file is known to have had (before and after, ours and outside),
+   *  recorded at or before `until` (ms), newest first, at most `limit` (default 50). The bases a
+   *  conflicted copy is merged against (docs/specs/merge.md). */
+  versionsOf?(
+    libraryId: string,
+    relPath: string,
+    opts: { until: number; limit?: number },
+  ): { at: number; text: string }[];
   /** Stale-overwrite entries since `since` (ms) not resolved yet (put back, or kept as theirs). */
   countStale?(libraryId: string, since: number): number;
   /** Resolve a stale-overwrite entry by keeping the partner's version (no file changes). */
@@ -511,6 +519,11 @@ export interface EagleMonitor {
 
 export interface DropboxStatus {
   check(): Promise<{ state: 'idle' | 'syncing' | 'offline' | 'unknown'; detail: string }>;
+  /**
+   * `dropbox filestatus`: has Dropbox finished syncing each file (absolute paths)? 'unknown' (no
+   * client, a timeout, odd output) must never block anything. Optional: a test double may omit it.
+   */
+  fileStatus?(paths: string[]): Promise<Record<string, 'upToDate' | 'syncing' | 'unknown'>>;
 }
 
 // ───────────────────────── Import (src/core/import) ─────────────────────────

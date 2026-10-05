@@ -13,6 +13,7 @@ import type {
 } from '../../shared/types';
 import type { IndexDelta } from '../contracts';
 import { scanItemConflicts } from '../sync';
+import { runConflictPass } from './conflicts';
 import { currentCounts } from './group';
 import { itemsText, quoted } from './labels';
 import {
@@ -273,6 +274,7 @@ async function checkItemConflicts(s: Session, ids: string[], gone: string[] = []
     }
   }
   if (dirty) s.env.statusChanged();
+  if (dirty && !s.closed) void runConflictPass(s); // new copies next to an item that just changed
 }
 
 /**
@@ -312,6 +314,8 @@ export function startVerify(s: Session, opts: { pauseMs?: number } = {}): Promis
     for (const c of found)
       if (c.itemId) s.itemConflicts.set(c.itemId, [...(s.itemConflicts.get(c.itemId) ?? []), c]);
     s.env.statusChanged();
+    // Merge or tidy what was found (the pass is the one place that checks the library may be edited).
+    await runConflictPass(s);
   })()
     .catch((e: unknown) => {
       if (!signal.aborted) console.error('[boogie] checking the library failed', e);

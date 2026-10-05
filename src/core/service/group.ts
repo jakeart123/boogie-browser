@@ -1,5 +1,6 @@
 // The one path every mutation takes: check writable -> open a journal group -> let the
 // operation write through the adapter -> keep the index in step -> commit -> tell the UI.
+import { join } from 'node:path';
 import type {
   Actor,
   Counts,
@@ -190,6 +191,48 @@ export async function editItems(
   return written;
 }
 
+/**
+ * How long a write to a shared library's root files waits for Dropbox (docs/specs/merge.md
+ * section 4), and how long it stops waiting after a wait ran out.
+ */
+export const SETTLE = { maxMs: 20_000, pollMs: 500, restMs: 5 * 60_000 };
+
+/** When a wait last ran out, per open library. */
+const gaveUp = new WeakMap<Session, number>();
+
+/**
+ * Before writing the root metadata.json or tags.json of a shared library (the files everyone
+ * edits): if Dropbox says that file is still syncing, wait for it (up to 20 s), so the write isn't
+ * made over a version that is about to be replaced, then write anyway. No Dropbox client, a
+ * library that isn't shared, or any answer but "syncing" never waits.
+ *
+ * Two cases never wait, because the wait runs inside the edit (the person is watching it):
+ * - we wrote this file ourselves a moment ago, so what Dropbox is busy with is our own upload
+ *   (the second of two quick folder edits would otherwise always wait for the first);
+ * - a wait ran out a little while ago: Dropbox isn't getting anywhere (no network, say), and
+ *   every further folder edit would stand still for the full 20 s.
+ */
+export async function settleSharedFile(s: Session, relPath: string): Promise<void> {
+  const dropbox = s.env.deps.dropbox;
+  if (!s.shared || !dropbox.fileStatus) return;
+  if (s.lib.recentSelfWrites().has(relPath)) return;
+  if (Date.now() - (gaveUp.get(s) ?? -Infinity) < SETTLE.restMs) return;
+  const file = join(s.lib.root, relPath);
+  const deadline = Date.now() + SETTLE.maxMs;
+  for (;;) {
+    const state = await dropbox.fileStatus([file]).then(
+      (found) => found[file],
+      () => 'unknown',
+    );
+    if (state !== 'syncing' || s.closed) return;
+    if (Date.now() + SETTLE.pollMs > deadline) {
+      gaveUp.set(s, Date.now());
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, SETTLE.pollMs));
+  }
+}
+
 /** One root write. Keeps the index and our copy of the root in step. Returns false if nothing changed. */
 export async function writeRoot(
   s: Session,
@@ -197,6 +240,7 @@ export async function writeRoot(
   t: Touch,
   mutate: (root: EagleRootRecord) => boolean | void,
 ): Promise<boolean> {
+  await settleSharedFile(s, 'metadata.json');
   const done = await s.lib.updateRoot(mutate, ctx);
   if (!done) return false;
   s.root = JSON.parse(done.after) as EagleRootRecord;

@@ -9,6 +9,7 @@ import { childPath } from '../eagle';
 import { pathExists } from '../libraries/fsutil';
 import { libraryRef } from '../libraryId';
 import { whyNotWritable } from '../safety/writeGuard';
+import { runConflictPass } from './conflicts';
 import {
   applyDelta,
   handleForeignMtime,
@@ -204,6 +205,7 @@ export function startSession(s: Session): void {
     conflicts: (files) => {
       s.conflicts = files;
       s.env.statusChanged();
+      void runConflictPass(s); // (waits for the first index scan to finish: see ready() there)
     },
     rootFiles: (which) =>
       void loadLibraryFiles(s, which).catch(report('reading tags.json or saved-filters.json')),
@@ -212,7 +214,9 @@ export function startSession(s: Session): void {
   });
   void loadLibraryFiles(s).catch(report('reading tags.json or saved-filters.json'));
   void startSync(s).then(() => {
-    if (!s.closed) void startVerify(s);
+    if (s.closed) return;
+    void startVerify(s);
+    void runConflictPass(s); // copies the watcher found while the first scan was running
   });
 }
 

@@ -747,3 +747,120 @@ describe('storage', () => {
     await expect(journal.planUndo('garbage', lib.current)).rejects.toThrow(/Unknown history group/);
   });
 });
+
+describe('versionsOf (the bases a conflicted copy is merged against)', () => {
+  const SYSTEM = { kind: 'system', name: 'Boogie' } as const;
+  let clock = 1_790_000_000_000;
+  const at = (min: number) => 1_790_000_000_000 + min * 60_000;
+  const texts = (list: { text: string }[]) => list.map((v) => JSON.parse(v.text).name);
+
+  beforeEach(() => {
+    clock = at(0);
+    journal.close();
+    journal = createJournal({ dir, now: () => clock });
+    lib = new FakeLibrary(journal);
+  });
+
+  /** One edit by `actor` at minute `min`: the item becomes `name`. */
+  const rename = (name: string, min: number, id = 'A') => {
+    clock = at(min);
+    return lib.act('Renamed', (g) => lib.edit(g, id, (r) => (r.name = name)), [id]);
+  };
+
+  it('gives before and after texts, distinct, newest first, none after `until`', () => {
+    lib.put('A', item('A', { name: 'v1' }));
+    rename('v2', 1);
+    rename('v3', 5);
+    rename('v2', 9); // v2 again: still one version
+    const all = journal.versionsOf(LIB, 'images/A.info/metadata.json', { until: at(100) });
+    expect(texts(all)).toEqual(['v2', 'v3', 'v1']);
+    expect(all.map((v) => v.at)).toEqual([at(9), at(9), at(1)]); // the latest time each was recorded
+    // Cut off between the second and third edit: the third never happened as far as the copy knows.
+    const early = journal.versionsOf(LIB, 'images/A.info/metadata.json', { until: at(3) });
+    expect(texts(early)).toEqual(['v2', 'v1']);
+    expect(
+      journal.versionsOf(LIB, 'images/A.info/metadata.json', { until: at(100), limit: 2 }),
+    ).toHaveLength(2);
+    expect(journal.versionsOf(LIB, 'images/A.info/metadata.json', { until: at(0) })).toEqual([]);
+    expect(journal.versionsOf(LIB, 'images/NOPE.info/metadata.json', { until: at(100) })).toEqual(
+      [],
+    );
+  });
+
+  it('knows outside versions and the root file too, and nothing for a library without a journal', () => {
+    lib.put('A', item('A', { name: 'v1' }));
+    clock = at(2);
+    journal.recordExternal(
+      LIB,
+      { kind: 'external', name: 'Sam' },
+      [
+        {
+          itemId: 'A',
+          relPath: 'images/A.info/metadata.json',
+          before: JSON.stringify(item('A', { name: 'v1' })),
+          after: JSON.stringify(item('A', { name: 'by Sam' })),
+        },
+        {
+          itemId: null,
+          relPath: 'metadata.json',
+          before: '{"folders":[]}',
+          after: '{"folders":[1]}',
+        },
+      ],
+      'Sam edited 1 item',
+    );
+    expect(texts(journal.versionsOf(LIB, 'images/A.info/metadata.json', { until: at(5) }))).toEqual(
+      ['by Sam', 'v1'],
+    );
+    expect(journal.versionsOf(LIB, 'metadata.json', { until: at(5) }).map((v) => v.text)).toEqual([
+      '{"folders":[1]}',
+      '{"folders":[]}',
+    ]);
+    expect(journal.versionsOf('0123456789abcdef', 'metadata.json', { until: at(5) })).toEqual([]);
+  });
+
+  it("counts what an automatic merge wrote as a version, and undoing the merge doesn't choke on the copy", async () => {
+    lib.put('A', item('A', { name: 'v1' }));
+    rename('v2', 1);
+    // Boogie's own merge of a conflicted copy: the live file changes and the copy moves out.
+    clock = at(2);
+    const copy = "images/A.info/metadata (Sam's conflicted copy 2026-09-28).json";
+    const g = journal.begin(LIB, SYSTEM, 'Merged Sam’s conflicted copy', 'merge');
+    lib.edit(g, 'A', (r) => (r.name = 'merged'));
+    journal.recordFile(g, {
+      relPath: copy,
+      before: 'moved to the store',
+      after: null,
+      itemId: 'A',
+    });
+    const entry = journal.commit(g, { itemIds: ['A'] })!;
+    rename('v4', 3); // a later edit by the user: its before text is the merge's output
+
+    expect(
+      texts(journal.versionsOf(LIB, 'images/A.info/metadata.json', { until: at(100) })),
+    ).toEqual(['v4', 'merged', 'v2', 'v1']);
+
+    const { plan } = await lib.undo(entry.groupId);
+    expect(plan.conflicts.map((c) => c.field)).toEqual(['name']); // v4 is newer than the merge: left alone
+    expect(plan.items.map((i) => i.id)).toEqual([]);
+    expect(lib.item('A')!.name).toBe('v4');
+  });
+
+  it('undo of a merge puts the live file back and ignores the copy that left', async () => {
+    lib.put('A', item('A', { name: 'v1' }));
+    clock = at(2);
+    const g = journal.begin(LIB, SYSTEM, 'Merged Sam’s conflicted copy', 'merge');
+    lib.edit(g, 'A', (r) => (r.name = 'merged'));
+    journal.recordFile(g, {
+      relPath: "images/A.info/metadata (Sam's conflicted copy 2026-09-28).json",
+      before: 'moved to the store',
+      after: null,
+      itemId: 'A',
+    });
+    const entry = journal.commit(g, { itemIds: ['A'] })!;
+    expect(entry.undoable).toBe(true);
+    const { plan } = await lib.undo(entry.groupId);
+    expect(plan.conflicts).toEqual([]);
+    expect(lib.renames).toEqual([{ id: 'A', to: 'v1' }]); // a name goes back through the adapter's rename
+  });
+});
