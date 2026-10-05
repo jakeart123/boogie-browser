@@ -1,5 +1,6 @@
 // Library-level read tools: what is open, folders, tags, smart folders, history.
 import { z } from 'zod';
+import { library } from '../schemas';
 import type { LibraryState } from '../../../shared/types';
 import { FolderIndex } from '../folders';
 import { historyOut } from '../format';
@@ -10,7 +11,6 @@ async function libraryOverview(call: Call, state: LibraryState) {
   const folders = new FolderIndex(state.folders);
   const me = known.find((k) => k.path === state.ref.path);
   return {
-    open: true,
     name: state.ref.name,
     path: state.ref.path,
     read_only: state.readOnly,
@@ -49,26 +49,19 @@ export function registerLibraryTools(tool: Tool): void {
     {
       title: 'Library info',
       description:
-        'Start here: the open library, whether it is read-only (and why) or shared with a partner on real Eagle, item counts and top-level folders.',
-      input: z.strictObject({}),
+        'A library: whether it is read-only (and why) or shared with a partner on real Eagle, item counts and top-level folders.',
+      input: z.strictObject({ library }),
       kind: 'read',
     },
-    async (_args, call) => {
-      const state = await call.api.getLibraryState();
-      if (!state)
-        return {
-          open: false,
-          hint: 'No library is open. Call list_libraries, then open_library with one of the paths.',
-        };
-      return libraryOverview(call, state);
-    },
+    async (_args, call) => libraryOverview(call, await openLibrary(call)),
   );
 
   tool(
     'list_libraries',
     {
       title: 'List libraries',
-      description: 'Libraries Boogie Browser knows about, and which one is open now.',
+      description:
+        'Start here. Libraries Boogie Browser knows about; pass one as `library` to the other tools. open_in_app only says what the user is looking at.',
       input: z.strictObject({}),
       kind: 'read',
     },
@@ -81,7 +74,7 @@ export function registerLibraryTools(tool: Tool): void {
         libraries: known.map((k) => ({
           name: k.name,
           path: k.path,
-          open: state?.ref.path === k.path,
+          open_in_app: state?.ref.path === k.path,
           exists: k.exists,
           shared: k.shared,
           partner: k.partnerName,
@@ -92,35 +85,13 @@ export function registerLibraryTools(tool: Tool): void {
   );
 
   tool(
-    'open_library',
-    {
-      title: 'Open library',
-      description:
-        'Open a library by path (from list_libraries). This switches what the user sees in the app: only do it when asked or when nothing is open.',
-      input: z.strictObject({
-        path: z.string().min(1),
-        read_only: z.boolean().optional(),
-      }),
-      kind: 'additive',
-      // It changes what the app shows, not any library, so it is not a "read" tool, but it is harmless to repeat.
-      readOnlyHint: false,
-    },
-    async ({ path, read_only }, call) => {
-      const state = await call.api.openLibrary(
-        path,
-        read_only === undefined ? undefined : { readOnly: read_only },
-      );
-      return libraryOverview(call, state);
-    },
-  );
-
-  tool(
     'list_folders',
     {
       title: 'List folders',
       description:
         'The folder tree, depth first, with ids, paths ("Parent / Child"), item counts and auto-tags.',
       input: z.strictObject({
+        library,
         parent: z.string().optional().describe('Only this folder and what is under it.'),
         max_depth: z.number().int().min(0).max(20).optional().describe('0 = one level.'),
       }),
@@ -159,6 +130,7 @@ export function registerLibraryTools(tool: Tool): void {
       description:
         'Tags with item counts, starred ones marked, and the tag groups. Check here before inventing a tag: reuse the existing spelling.',
       input: z.strictObject({
+        library,
         query: z.string().optional().describe('Tags containing this text.'),
         sort: z.enum(['count', 'name']).optional(),
         starred_only: z.boolean().optional(),
@@ -205,7 +177,7 @@ export function registerLibraryTools(tool: Tool): void {
       title: 'List smart folders',
       description:
         'Smart folders (with their rules and item counts) and saved filters. search_items takes either (smart_folder, saved_filter).',
-      input: z.strictObject({}),
+      input: z.strictObject({ library }),
       kind: 'read',
     },
     async (_args, call) => {
@@ -246,6 +218,7 @@ export function registerLibraryTools(tool: Tool): void {
       description:
         "Recent changes, newest first: yours, the user's, other agents' and the partner's. undo takes a group_id of an agent's change.",
       input: z.strictObject({
+        library,
         limit: z.number().int().min(1).max(100).optional().describe('Default 20.'),
         mine_only: z.boolean().optional(),
       }),

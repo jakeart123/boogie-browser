@@ -57,6 +57,10 @@ export async function createCoreHost(opts: CreateCoreHostOptions = {}): Promise<
   return {
     api: makeApi(service, USER),
     as: (actor) => makeApi(service, actor),
+    forLibrary: async (path, actor) => {
+      const { session, release } = await service.useLibrary(path);
+      return { api: makeApi(service, actor, session.ref.id), release };
+    },
     on: (event, fn) => service.on(event, fn),
     resolveFile: (kind, libraryId, itemId) => service.resolveFile(kind, libraryId, itemId),
     originalPath: (itemId) => service.originalPath(itemId),

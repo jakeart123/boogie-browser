@@ -7,7 +7,7 @@ import { checkConditions } from '../../http/smartRules';
 import { type Change } from '../changes';
 import { UserError } from '../errors';
 import { type Tool, TWO_STEP, writableLibrary } from '../kit';
-import { colorOrNone, dryRun, planId } from '../schemas';
+import { colorOrNone, dryRun, library, planId } from '../schemas';
 import { fromMutation, runWrite } from '../write';
 import { buildQuery, SearchInput } from './items';
 
@@ -51,6 +51,7 @@ function conditionsOrError(raw: unknown) {
 
 /** The filter part of search_items' arguments (a saved filter has no scope, paging or sort). */
 const FilterInput = SearchInput.omit({
+  library: true,
   scope: true,
   smart_folder: true,
   saved_filter: true,
@@ -68,6 +69,7 @@ export function registerSmartTools(tool: Tool): void {
       description:
         'Create a smart folder (name + conditions), or change one (smart_folder: its id or name). Check the result with search_items smart_folder.',
       input: z.strictObject({
+        library,
         smart_folder: z.string().trim().min(1).optional(),
         name: z.string().trim().min(1).max(200).optional(),
         conditions: z.array(z.record(z.string(), z.unknown())).optional().describe(RULES_HELP),
@@ -153,7 +155,7 @@ export function registerSmartTools(tool: Tool): void {
     {
       title: 'Delete smart folder',
       description: 'Delete a smart folder (only the saved rules; no item changes).' + TWO_STEP,
-      input: z.strictObject({ smart_folder: z.string().trim().min(1), plan_id: planId }),
+      input: z.strictObject({ library, smart_folder: z.string().trim().min(1), plan_id: planId }),
       kind: 'changing',
     },
     async ({ smart_folder, plan_id }, call) => {
@@ -188,6 +190,7 @@ export function registerSmartTools(tool: Tool): void {
       description:
         "Save search_items filters under a name (Eagle's saved filters); saving an existing name replaces its filters. search_items saved_filter uses it.",
       input: z.strictObject({
+        library,
         name: z.string().trim().min(1).max(200),
         filter: z
           .record(z.string(), z.unknown())

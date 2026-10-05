@@ -94,12 +94,6 @@ export async function runWrite(
     };
   }
 
-  // The user may have switched libraries meanwhile: the change list was for `lib`.
-  if ((await call.api.getLibraryState())?.ref.id !== lib.ref.id) {
-    throw new UserError(
-      'The user switched to another library while this was being prepared, so nothing was changed. Call library_info and start again.',
-    );
-  }
   const activity = call.state.startActivity(call.actor.name, draft.activity, draft.itemCount);
   let applied: Applied;
   try {
@@ -154,7 +148,7 @@ export async function fetchItems(api: CoreApi, ids: string[]): Promise<Item[]> {
   const { items, missing } = await getItemsInOrder(api, ids);
   if (missing.length) {
     throw new UserError(
-      `Unknown item ids: ${missing.slice(0, 10).join(', ')}${missing.length > 10 ? ` and ${missing.length - 10} more` : ''}. Ids come from search_items and belong to the open library.`,
+      `Unknown item ids: ${missing.slice(0, 10).join(', ')}${missing.length > 10 ? ` and ${missing.length - 10} more` : ''}. Ids come from search_items and belong to that library.`,
     );
   }
   return items;

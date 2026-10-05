@@ -33,6 +33,9 @@ const readOnlySink = (dir: string): JournalSink => ({
 async function openSource(s: Session, path: string, h: JobHandle): Promise<OpenSource> {
   const { deps, paths } = s.env;
   const ref = libraryRef(path);
+  // Open in Boogie already (the window, or an agent): read that session's index, never a second one.
+  const open = s.env.findOpen(ref.id);
+  if (open) return { ref, lib: open.lib, index: open.index, urls: open.urls, borrowed: true };
   if (!(await pathExists(join(ref.path, 'metadata.json'))))
     throw new Error(`${quoted(ref.name)} doesn't look like an Eagle library.`);
   h.label(`Reading ${quoted(ref.name)}`);

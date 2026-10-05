@@ -48,7 +48,9 @@ export function readSpec(a: Args): AddSpec {
 }
 
 /** Folder ids a request names (`folderId`/`folderID` and `folderIds`/`folderIDs`), keeping only
- * folders that exist, like Eagle does. Asking for none costs no library read. */
+ * folders that exist, like Eagle does. Asking for none costs no library read. Unlike Eagle, when
+ * none of them exist the add is refused: the folders were almost surely read from another library
+ * (the user switched libraries mid-task), and the item would land unfiled in the wrong one. */
 export async function pickFolders(ctx: Ctx, ...sources: Args[]): Promise<string[]> {
   const asked: string[] = [];
   for (const a of sources) {
@@ -60,8 +62,15 @@ export async function pickFolders(ctx: Ctx, ...sources: Args[]): Promise<string[
       if (!asked.includes(s)) asked.push(s);
   }
   if (!asked.length) return [];
-  const known = indexFolders((await needLibrary(ctx)).folders);
-  return asked.filter((id) => known.has(id));
+  const lib = await needLibrary(ctx);
+  const known = indexFolders(lib.folders);
+  const found = asked.filter((id) => known.has(id));
+  if (!found.length)
+    throw new HttpError(
+      400,
+      `None of those folders are in the library open now ("${lib.ref.name}"), so nothing was added.`,
+    );
+  return found;
 }
 
 /** The core's options for one add: the first folder is the target, the rest are extra folders. */

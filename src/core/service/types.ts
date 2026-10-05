@@ -38,6 +38,8 @@ export interface Env {
   /** Something the status strip shows changed. */
   statusChanged(): void;
   setLastExternal(entry: HistoryEntry): void;
+  /** The session of a library Boogie has open now (the window's or an agent's), else null. */
+  findOpen(libraryId: string): Session | null;
 }
 
 export type ReadOnlyKind = NonNullable<LibraryState['readOnlyKind']>;
@@ -48,6 +50,8 @@ export interface OpenSource {
   lib: EagleLibrary;
   index: LibraryIndex;
   urls: UrlBuilder;
+  /** Another open session's lib and index, lent for a scan: closing the scan must not close them. */
+  borrowed?: boolean;
 }
 
 export interface Session {

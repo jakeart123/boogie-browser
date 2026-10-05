@@ -10,6 +10,7 @@ import { FolderIndex } from '../folders';
 import {
   ADDITIVE_RULE,
   type Call,
+  findLibrary,
   isPaused,
   openLibrary,
   type Tool,
@@ -17,7 +18,7 @@ import {
   writableLibrary,
 } from '../kit';
 import { MAX_ITEMS_PER_APPLY } from '../plans';
-import { dryRun, folderRef, itemIds, planId } from '../schemas';
+import { dryRun, folderRef, itemIds, library, planId } from '../schemas';
 import { type Applied, fetchItems, runWrite } from '../write';
 import { importResultOut, WAIT_MS, waitForJob } from './jobs';
 
@@ -139,6 +140,7 @@ export function registerImportTools(tool: Tool): void {
       description:
         'Download a picture or video from an http(s) address into the library (waits up to 60 s). Returns the new item id.',
       input: z.strictObject({
+        library,
         url: z.string().trim().min(1).max(4000),
         name: z.string().trim().min(1).max(200).optional(),
         ...importFields,
@@ -197,6 +199,7 @@ export function registerImportTools(tool: Tool): void {
         "Copy files (absolute paths, not folders) into the library; the originals stay. Files inside a library or Boogie's own folders are refused. Waits up to 60 s." +
         ADDITIVE_RULE,
       input: z.strictObject({
+        library,
         paths: z.array(z.string().min(1).max(4000)).min(1).max(MAX_ITEMS_PER_APPLY),
         source_url: z.string().max(4000).optional(),
         ...importFields,
@@ -252,27 +255,26 @@ export function registerImportTools(tool: Tool): void {
     {
       title: 'Copy to another library',
       description:
-        "Copy items (files and details, as new items) into another library from list_libraries; this library doesn't change. Waits up to 60 s." +
+        "Copy items (files and details, as new items) from library into to_library; library doesn't change. Waits up to 60 s." +
         ADDITIVE_RULE,
       input: z.strictObject({
+        library,
         item_ids: itemIds,
-        library: z.string().min(1).describe('Its path, as list_libraries shows it.'),
-        folder: z.string().optional().describe('A folder in that library (id, path or name).'),
+        to_library: z.string().min(1).describe('Path or name from list_libraries.'),
+        folder: z.string().optional().describe('A folder in to_library (id, path or name).'),
         dry_run: dryRun,
         plan_id: planId,
       }),
       kind: 'additive',
       idempotent: false,
     },
-    async ({ item_ids, library, folder, dry_run, plan_id }, call) => {
+    async ({ item_ids, to_library, folder, dry_run, plan_id }, call) => {
       const lib = await openLibrary(call); // only the target is written to
-      const target = (await call.api.listLibraries()).find(
-        (l) => l.path === library || l.name.toLowerCase() === library.trim().toLowerCase(),
-      );
-      if (!target || !target.exists)
-        throw new UserError(`No known library at "${library}". list_libraries shows them.`);
+      const target = await findLibrary(call.api, to_library);
       if (target.path === lib.ref.path)
-        throw new UserError('That is the open library. Use add_to_folders to file items here.');
+        throw new UserError(
+          'library and to_library are the same. Use add_to_folders to file items there.',
+        );
       let folderId: string | null = null;
       let folderPath: string | null = null;
       if (folder) {
@@ -289,7 +291,7 @@ export function registerImportTools(tool: Tool): void {
         lib,
         {
           tool: 'copy_to_library',
-          args: { item_ids: ids, library: target.path, folder: folderId },
+          args: { item_ids: ids, to_library: target.path, folder: folderId },
           kind: 'additive',
           dryRun: dry_run,
           planId: plan_id,

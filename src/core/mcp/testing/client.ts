@@ -23,7 +23,8 @@ async function parse(res: Response): Promise<any> {
   return JSON.parse(text);
 }
 
-export function makeClient(url: string, token: string) {
+/** `library` is passed to every tool but list_libraries unless a call names its own. */
+export function makeClient(url: string, token: string, library?: string) {
   let id = 0;
 
   async function post(
@@ -51,7 +52,8 @@ export function makeClient(url: string, token: string) {
     opts: { era?: 'legacy' | 'modern'; client?: string; title?: string; userAgent?: string } = {},
   ): Promise<ToolReply> {
     const modern = opts.era === 'modern';
-    const params: Record<string, unknown> = { name, arguments: args };
+    const withLib = library && name !== 'list_libraries' ? { library, ...args } : args;
+    const params: Record<string, unknown> = { name, arguments: withLib };
     const headers: Record<string, string> = opts.userAgent ? { 'user-agent': opts.userAgent } : {};
     if (modern) {
       params._meta = {

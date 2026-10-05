@@ -4,6 +4,9 @@ import { z } from 'zod';
 import { FOLDER_COLORS, type FolderColor } from '../../shared/types';
 import { MAX_ITEMS_PER_APPLY } from './plans';
 
+/** Every tool but list_libraries names its library: the user's open library never decides it. */
+export const library = z.string().trim().min(1).max(4000);
+
 export const itemId = z.string().trim().min(1).max(64);
 
 export const itemIds = z

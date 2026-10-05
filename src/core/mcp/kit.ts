@@ -8,8 +8,9 @@ import type {
 import { CLIENT_INFO_META_KEY } from '@modelcontextprotocol/server';
 import type { z } from 'zod';
 import type { CoreApi } from '../../shared/api';
-import type { Actor, AgentActivity, LibraryState } from '../../shared/types';
+import type { Actor, AgentActivity, KnownLibrary, LibraryState } from '../../shared/types';
 import type { CoreHost } from '../contracts';
+import { libraryRef } from '../libraryId';
 import { UserError } from './errors';
 import { PlanStore } from './plans';
 
@@ -157,7 +158,10 @@ export function stateFor(host: CoreHost): McpState {
 export interface Call {
   host: CoreHost;
   state: McpState;
-  /** CoreApi whose writes are attributed to this agent in History. */
+  /**
+   * CoreApi whose writes are attributed to this agent in History. For a tool with a `library`
+   * argument it is bound to that library for the whole call, whatever the user has open.
+   */
   api: CoreApi;
   actor: Actor;
   /** The HTTP client's User-Agent product, lowercased ('' when none): what Pause keys on. */
@@ -207,12 +211,10 @@ export interface ToolDef<I extends z.ZodType> {
   idempotent?: boolean;
   /** True for tools that reach outside this computer (URL downloads). */
   openWorld?: boolean;
-  /** For tools that change app state but not the library (open_library). */
-  readOnlyHint?: boolean;
 }
 
 function annotationsFor(def: ToolDef<z.ZodType>): ToolAnnotations {
-  const readOnly = def.readOnlyHint ?? def.kind === 'read';
+  const readOnly = def.kind === 'read';
   const a: ToolAnnotations = {
     readOnlyHint: readOnly,
     openWorldHint: def.openWorld ?? false,
@@ -223,6 +225,11 @@ function annotationsFor(def: ToolDef<z.ZodType>): ToolAnnotations {
     if (def.idempotent ?? def.kind === 'additive') a.idempotentHint = true;
   }
   return a;
+}
+
+function result(out: Record<string, unknown> | Raw): CallToolResult {
+  if (out instanceof Raw) return out.result;
+  return { content: [{ type: 'text', text: JSON.stringify(out) }], structuredContent: out };
 }
 
 function errorResult(message: string): CallToolResult {
@@ -302,16 +309,23 @@ export function toolRegistrar(server: McpServer, host: CoreHost, clientName: str
       try {
         const call = callFor(ctx);
         state.noteClient(call);
-        // Pause: every write (undo and open_library too) is refused at once, and nothing is held
-        // back to run later: by then the library, or the agent's plan, may have moved on.
+        // Pause: every write (undo too) is refused at once, and nothing is held back to run
+        // later: by then the library, or the agent's plan, may have moved on.
         const pausedAs = def.kind === 'read' ? null : state.pausedAs(call);
         if (pausedAs !== null) {
           state.hold(pausedAs);
           return errorResult(PAUSED);
         }
-        const out = await run(args, call);
-        if (out instanceof Raw) return out.result;
-        return { content: [{ type: 'text', text: JSON.stringify(out) }], structuredContent: out };
+        const wanted = (args as { library?: unknown }).library;
+        if (typeof wanted !== 'string') return result(await run(args, call));
+        // The library the agent named, held open (in the background if the user isn't viewing it).
+        const lib = await findLibrary(call.api, wanted);
+        const bound = await host.forLibrary(lib.path, call.actor);
+        try {
+          return result(await run(args, { ...call, api: bound.api }));
+        } finally {
+          bound.release();
+        }
       } catch (e) {
         return errorResult(e instanceof Error ? e.message : String(e));
       }
@@ -338,12 +352,29 @@ export const isPaused = (call: Call): boolean => call.state.pausedAs(call) !== n
 
 // ── Library access helpers ──
 
+/** A known library by path, or by name when only one has it. */
+export async function findLibrary(api: CoreApi, wanted: string): Promise<KnownLibrary> {
+  const known = await api.listLibraries();
+  const w = wanted.trim();
+  const path = libraryRef(w).path;
+  const byName = known.filter((l) => l.name.toLowerCase() === w.toLowerCase());
+  const hit =
+    known.find((l) => l.path === w || l.path === path) ??
+    (byName.length === 1 ? byName[0] : undefined);
+  if (!hit)
+    throw new UserError(
+      byName.length > 1
+        ? `Several libraries are called "${w}". Pass the path from list_libraries.`
+        : `No known library "${w}". list_libraries shows them; the user adds new ones in the app.`,
+    );
+  if (!hit.exists) throw new UserError(`"${hit.name}" isn't there right now (${hit.path}).`);
+  return hit;
+}
+
+/** The library this call works on (its `library` argument). */
 export async function openLibrary(call: Call): Promise<LibraryState> {
   const s = await call.api.getLibraryState();
-  if (!s)
-    throw new UserError(
-      'No library is open. Call list_libraries, then open_library with one of the paths.',
-    );
+  if (!s) throw new UserError('That library was closed. Try again.');
   return s;
 }
 

@@ -1,4 +1,8 @@
-// The host: owns settings, the known-library list, the one open session, jobs, status and events.
+// The host: owns settings, the known-library list, the open sessions, jobs, status and events.
+// The window shows one library (`session`). Agents (MCP) name a library on every call and work on
+// it directly: if the window isn't showing it, it is opened in the background, where its events
+// never reach the window, and closed again once agents leave it alone. One library is never open
+// twice (one index, one journal), so the window and agents share a session when they meet.
 // The CoreApi the UI/HTTP/MCP call is built on top of this (api.ts).
 import { join } from 'node:path';
 import type { BoogieEventName, BoogieEvents } from '../../shared/api';
@@ -8,6 +12,7 @@ import type {
   AppStatus,
   HistoryEntry,
   KnownLibrary,
+  LibraryRef,
   LibraryState,
 } from '../../shared/types';
 import type { AppPaths, MediaService } from '../contracts';
@@ -31,12 +36,19 @@ import type { Env, Session } from './types';
 import { Mutex, throttle } from './util';
 
 const TICK_MS = 10_000;
+/** A background library stays open this long after an agent's last call (agents work in bursts). */
+export const AGENT_IDLE_MS = 5 * 60_000;
 
 export class CoreService {
   readonly bus = new Bus();
   readonly jobs = new JobManager((p) => this.bus.emit('job', p));
+  /** The library the window shows. */
   session: Session | null = null;
   closed = false;
+  /** Libraries open only for agents, by id. */
+  private readonly background = new Map<string, Session>();
+  /** Agents' use of each library: calls running now, and when the last one ended. */
+  private readonly agentUse = new Map<string, { holds: number; at: number }>();
 
   private mediaService: MediaService | null = null;
   private ports: AppStatus['ports'] = { eagleApi: null, extension: null, mcp: null, reason: null };
@@ -71,6 +83,7 @@ export class CoreService {
         this.lastExternal = entry;
         this.statusThrottled();
       },
+      findOpen: (id) => this.sessionById(id),
     };
     // Also re-checks whether Eagle opened or closed this library (every 10 s, per the spec).
     this.timer = setInterval(() => void this.tick(), TICK_MS);
@@ -86,6 +99,36 @@ export class CoreService {
   need(): Session {
     if (!this.session || this.session.closed) throw new Error('Open a library first.');
     return this.session;
+  }
+
+  /** The open session of a library (the window's or a background one), or null. */
+  sessionById(id: string): Session | null {
+    const s = this.session?.ref.id === id ? this.session : this.background.get(id);
+    return s && !s.closed ? s : null;
+  }
+
+  private openSessions(): Session[] {
+    return [this.session, ...this.background.values()].filter(
+      (s): s is Session => !!s && !s.closed,
+    );
+  }
+
+  /** A session's Env: its events and status reach the window only while the window shows it. */
+  private envFor(id: string): Env {
+    const shown = () => this.session?.ref.id === id;
+    return {
+      ...this.env,
+      emit: (event, payload) => {
+        if (shown()) this.bus.emit(event, payload);
+      },
+      hasListener: (event) => shown() && this.bus.has(event),
+      statusChanged: () => {
+        if (shown()) this.statusThrottled();
+      },
+      setLastExternal: (entry) => {
+        if (shown()) this.env.setLastExternal(entry);
+      },
+    };
   }
 
   on<K extends BoogieEventName>(event: K, fn: (payload: BoogieEvents[K]) => void): () => void {
@@ -111,27 +154,39 @@ export class CoreService {
       );
     }
     const old = this.session;
-    // The same library can't be open twice (one index, one journal), so it is closed first. A
-    // different one is opened before the current one is closed, so if it fails (a library that is
-    // still syncing, say) what you had open stays open.
-    if (old && old.ref.id === ref.id) {
-      this.session = null;
-      await closeSession(old);
+    // Agents have it open already: show their session, unless view-only was asked for.
+    let session = this.background.get(ref.id) ?? null;
+    if (session) {
+      this.background.delete(ref.id);
+      if (session.userReadOnly !== !!opts.readOnly) {
+        await closeSession(session);
+        session = null;
+      }
     }
-    const entry = (await this.known.find(ref.path)) ?? (await this.known.add(ref.path, 'user'));
-    const session = await openSession(this.env, ref.path, opts, {
-      shared: entry.shared,
-      partnerName: entry.partnerName,
-    });
+    const adopted = !!session;
+    if (!session) {
+      // The same library can't be open twice (one index, one journal), so it is closed first. A
+      // different one is opened before the current one is closed, so if it fails (a library that
+      // is still syncing, say) what you had open stays open.
+      if (old && old.ref.id === ref.id) {
+        this.session = null;
+        await closeSession(old);
+      }
+      const entry = (await this.known.find(ref.path)) ?? (await this.known.add(ref.path, 'user'));
+      session = await openSession(this.envFor(ref.id), ref.path, opts, {
+        shared: entry.shared,
+        partnerName: entry.partnerName,
+      });
+    }
     if (this.session && this.session !== session) {
       const previous = this.session;
       this.session = null;
-      await closeSession(previous);
+      await this.retire(previous);
     }
     this.session = session;
     this.lastExternal = null;
     await this.known.touch(session.ref.path);
-    startSession(session);
+    if (!adopted) startSession(session);
     const state = buildLibraryState(session);
     this.bus.emit('library', state);
     this.statusThrottled();
@@ -172,8 +227,8 @@ export class CoreService {
     opts: { partnerName?: string | null; shared?: boolean },
   ): Promise<void> {
     const entry = await this.known.setOptions(path, opts);
-    const s = this.session;
-    if (entry && s && s.ref.id === entry.id) {
+    const s = entry ? this.sessionById(entry.id) : null;
+    if (entry && s) {
       // No longer shared: nothing waits for a partner's Eagle, and months-old bases must not be
       // used if it is shared again later (review should-fix 5).
       if (s.shared && !entry.shared) s.partner?.unshared();
@@ -200,9 +255,88 @@ export class CoreService {
       const s = this.session;
       this.session = null;
       this.lastExternal = null;
-      if (s) await closeSession(s);
+      if (s) await this.retire(s);
       this.statusThrottled();
     });
+  }
+
+  // ───────────────────────── agents' libraries ─────────────────────────
+
+  /**
+   * For an agent call: the session of the library at `path`, opened in the background when the
+   * window isn't showing it. Only libraries Boogie knows (the user adds them in the app). The
+   * library stays open until `release()` and a while after (AGENT_IDLE_MS).
+   */
+  async useLibrary(path: string): Promise<{ session: Session; release(): void }> {
+    const ref = libraryRef(path);
+    let use = this.agentUse.get(ref.id);
+    if (!use) this.agentUse.set(ref.id, (use = { holds: 0, at: 0 }));
+    const held = use;
+    held.holds++;
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      held.holds--;
+      held.at = Date.now();
+    };
+    try {
+      const session =
+        this.sessionById(ref.id) ?? (await this.busy.run(() => this.openBackground(ref)));
+      return { session, release };
+    } catch (e) {
+      release();
+      throw e;
+    }
+  }
+
+  private async openBackground(ref: LibraryRef): Promise<Session> {
+    const open = this.sessionById(ref.id); // opened while this call waited its turn
+    if (open) return open;
+    const entry = await this.known.find(ref.path);
+    if (!entry)
+      throw new Error(
+        `Boogie doesn't know ${quoted(ref.name)}. The user adds libraries in the app.`,
+      );
+    const session = await openSession(
+      this.envFor(ref.id),
+      ref.path,
+      {},
+      {
+        shared: entry.shared,
+        partnerName: entry.partnerName,
+      },
+    );
+    this.background.set(ref.id, session);
+    startSession(session);
+    return session;
+  }
+
+  private agentBusy(id: string): boolean {
+    const use = this.agentUse.get(id);
+    return !!use && (use.holds > 0 || Date.now() - use.at < AGENT_IDLE_MS);
+  }
+
+  /** The window stopped showing `s`: agents still working in it keep it open in the background. */
+  private async retire(s: Session): Promise<void> {
+    // View-only was the window's choice; agents get the library opened normally on their next call.
+    if (!s.userReadOnly && this.agentBusy(s.ref.id)) this.background.set(s.ref.id, s);
+    else await closeSession(s);
+  }
+
+  /** Close background libraries agents have left alone (never while a job runs: it may need one). */
+  private async closeIdle(): Promise<void> {
+    if (this.jobs.list().some((j) => j.state === 'running')) return;
+    for (const [id, s] of [...this.background]) {
+      if (this.agentBusy(id)) continue;
+      await this.busy.run(async () => {
+        if (this.background.get(id) !== s || this.agentBusy(id)) return;
+        this.background.delete(id);
+        await closeSession(s);
+      });
+    }
+    for (const [id, use] of this.agentUse)
+      if (!this.agentBusy(id) && !use.holds) this.agentUse.delete(id);
   }
 
   /**
@@ -235,9 +369,10 @@ export class CoreService {
     // Edits made while writing was allowed still owe mtime.json their raises (batched ~1 s). Write
     // them before the guard may close, or the partner's Eagle never notices those edits. A failure
     // shows as the library's write problem; it mustn't stop the settings change.
-    const s = this.session;
     const touchesGuard = 'writableRoots' in patch || 'allowProtectedWrites' in patch;
-    if (touchesGuard && s && !s.closed && !s.readOnly) await s.lib.flushMtime().catch(() => {});
+    if (touchesGuard)
+      for (const s of this.openSessions())
+        if (!s.readOnly) await s.lib.flushMtime().catch(() => {});
     await this.settings.update(patch);
     // Allowing (or forbidding) writes can change what the open library may do. (The name cap is
     // handed to the adapter and importer when a library opens, so it applies from the next open.)
@@ -245,28 +380,35 @@ export class CoreService {
     return this.getSettings();
   }
 
-  /** Re-decide whether the open library may be edited (settings, or Eagle opened/closed here). */
+  /** Re-decide whether the open libraries may be edited (settings, or Eagle opened/closed here). */
   private async recheckReadOnly(): Promise<void> {
-    const s = this.session;
-    if (!s || s.closed) return;
+    for (const s of this.openSessions()) await this.recheckOne(s);
+  }
+
+  private async recheckOne(s: Session): Promise<void> {
     const now = await decideReadOnly(this.env, s.ref, {
       userReadOnly: s.userReadOnly,
       versionReason: s.versionReason,
     });
     if (now.reason === s.readOnlyReason) return;
     if (now.reason === null && s.adapterReadOnly) {
-      // Nothing blocks it any more, but the adapter was opened read-only: open it again.
+      // Nothing blocks it any more, but the adapter was opened read-only: open it again. A
+      // background one is just closed; the next agent call opens it editable.
       await this.busy.run(async () => {
-        if (this.session === s && !s.closed)
-          await this.openInternal(s.ref.path, { readOnly: s.userReadOnly });
+        if (s.closed) return;
+        if (this.session === s) await this.openInternal(s.ref.path, { readOnly: s.userReadOnly });
+        else if (this.background.get(s.ref.id) === s) {
+          this.background.delete(s.ref.id);
+          await closeSession(s);
+        }
       });
       return;
     }
     s.readOnly = now.reason !== null;
     s.readOnlyReason = now.reason;
     s.readOnlyKind = now.kind;
-    this.bus.emit('library', buildLibraryState(s));
-    this.statusThrottled();
+    s.env.emit('library', buildLibraryState(s));
+    s.env.statusChanged();
     // Editable again: re-sends to the partner's Eagle that waited go ahead, and so do conflicted copies.
     if (!s.readOnly) {
       s.partner?.resume();
@@ -324,6 +466,7 @@ export class CoreService {
     this.ticking = true;
     try {
       await this.recheckReadOnly();
+      await this.closeIdle();
       await this.emitStatus();
     } catch (e) {
       console.error('[boogie] status check failed', e);
@@ -354,9 +497,9 @@ export class CoreService {
     libraryId: string,
     itemId: string,
   ): Promise<{ path: string; mime: string } | null> {
-    const s = this.session;
-    if (!s || s.closed) return null;
-    const source = s.ref.id === libraryId ? s : s.dupeSources.find((d) => d.ref.id === libraryId);
+    const s = this.session && !this.session.closed ? this.session : null;
+    const source =
+      this.sessionById(libraryId) ?? s?.dupeSources.find((d) => d.ref.id === libraryId);
     return source ? resolveItemFile(source, this.media(), kind, itemId) : null;
   }
 
@@ -376,9 +519,10 @@ export class CoreService {
     this.statusThrottled.cancel();
     try {
       await this.busy.run(async () => {
-        const s = this.session;
+        const all = this.openSessions();
         this.session = null;
-        if (s) await closeSession(s);
+        this.background.clear();
+        for (const s of all) await closeSession(s);
       });
     } finally {
       // Whatever happened above, quitting still stops jobs and the media workers.

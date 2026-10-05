@@ -298,6 +298,7 @@ export function closeDupeSources(s: Session): void {
 }
 
 export function closeSource(src: OpenSource): void {
+  if (src.borrowed) return;
   void src.lib.close().catch(() => undefined);
   src.index.close();
 }
