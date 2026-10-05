@@ -5,7 +5,7 @@ import type { Actor, MutationResult } from '../../shared/types';
 import type { ChangeContext, EagleTagsFile } from '../contracts';
 import { normalizeTags } from '../eagle';
 import { stringList } from '../index/project';
-import { ensureWritable, runGroup, toResult } from './group';
+import { ensureWritable, runGroup, settleSharedFile, toResult } from './group';
 import { listText, quoted } from './labels';
 import { buildLibraryState } from './state';
 import type { Session, Touch } from './types';
@@ -55,6 +55,7 @@ export async function writeTagsFile(
   mutate: (file: EagleTagsFile) => boolean | void,
 ): Promise<boolean> {
   if (!s.lib.updateTagsFile) return false;
+  await settleSharedFile(s, 'tags.json');
   const done = await s.lib.updateTagsFile(mutate, ctx);
   if (!done) return false;
   remember(s, done.after);

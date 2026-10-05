@@ -17,6 +17,7 @@ import { pathExists } from '../libraries/fsutil';
 import { libraryRef } from '../libraryId';
 import { whyNotWritable } from '../safety/writeGuard';
 import type { CoreDeps } from './deps';
+import { conflictFiles, runConflictPass } from './conflicts';
 import { Bus } from './events';
 import { quoted } from './labels';
 import { resolveItemFile } from './files';
@@ -212,9 +213,13 @@ export class CoreService {
     const s = this.need();
     await this.recheckReadOnly();
     if (s.closed) return; // the recheck reopened it (editing was allowed meanwhile)
-    if (!opts.full) return s.watcher.poke();
+    if (!opts.full) {
+      await s.watcher.poke();
+      void runConflictPass(s); // a copy that was still syncing may be ready now
+      return;
+    }
     await startSync(s);
-    if (!s.closed) await startVerify(s, { pauseMs: 0 });
+    if (!s.closed) await startVerify(s, { pauseMs: 0 }); // ends with a look at the conflicted copies
   }
 
   // ───────────────────────── settings ─────────────────────────
@@ -262,8 +267,11 @@ export class CoreService {
     s.readOnlyKind = now.kind;
     this.bus.emit('library', buildLibraryState(s));
     this.statusThrottled();
-    // Editable again: re-sends to the partner's Eagle that waited go ahead.
-    if (!s.readOnly) s.partner?.resume();
+    // Editable again: re-sends to the partner's Eagle that waited go ahead, and so do conflicted copies.
+    if (!s.readOnly) {
+      s.partner?.resume();
+      void runConflictPass(s);
+    }
     // Eagle opened it here (or writing was switched off): running imports stop between files.
     if (s.readOnly) await this.jobs.cancelScope(s.ref.id, ['import', 'thumbnails']);
   }
@@ -290,7 +298,7 @@ export class CoreService {
       sync: {
         state: dropbox.state,
         detail: dropbox.detail,
-        conflicts: s ? [...s.conflicts, ...[...s.itemConflicts.values()].flat()] : [],
+        conflicts: s ? conflictFiles(s) : [],
       },
       eagle: { running: eagle.running, openLibraryPath: eagle.openLibraryPath },
       ports: { ...this.ports },

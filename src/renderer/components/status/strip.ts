@@ -59,3 +59,19 @@ export function oldCopiesText(p: AppStatus['partner'], name: string | null): str
   const who = name ? `${name}’s Eagle` : 'your partner’s Eagle';
   return `${n.toLocaleString()} of your changes may have been overwritten by ${who}`;
 }
+
+/**
+ * The warning for a shared library while Dropbox isn't syncing: edits made now can clash with the
+ * partner's later (that is what makes conflicted copies). Null when there is nothing to warn about:
+ * the library isn't shared, Dropbox is fine or just not known, or it can't be edited anyway.
+ */
+export function offlineWarning(
+  sync: AppStatus['sync'] | null,
+  shared: boolean,
+  readOnly: boolean,
+  partnerName: string | null,
+): string | null {
+  if (!shared || readOnly || sync?.state !== 'offline') return null;
+  const who = partnerName ? `${partnerName}’s` : 'your partner’s';
+  return `Dropbox isn’t syncing. Anything you change now may clash with ${who} changes later.`;
+}

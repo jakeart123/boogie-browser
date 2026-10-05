@@ -613,6 +613,18 @@ export interface ConflictFile {
   kind: 'root' | 'item' | 'mtime' | 'tags' | 'thumbnail' | 'other';
   itemId: string | null;
   detectedAt: number;
+  /** What differs from the library and couldn't be merged with certainty (docs/specs/merge.md).
+   *  The library keeps its own value until resolveConflict says otherwise. Absent: not compared
+   *  (a read-only library, or a kind Boogie doesn't merge). */
+  questions?: ConflictQuestion[];
+}
+
+/** One difference between a conflicted copy and the library that needs a person. */
+export interface ConflictQuestion {
+  id: string; // unique within the copy, e.g. "name", "tag:Blue", a folder id
+  label: string; // plain English, e.g. "Name", "Tag “Blue”", "Folder “Hands”"
+  live: string; // what the library has now, as short text ("(none)" when absent)
+  copy: string; // what the conflicted copy has
 }
 
 export interface AgentActivity {

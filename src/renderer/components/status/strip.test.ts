@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { HistoryEntry } from '../../../shared/types';
-import { externalText, oldCopiesText, partnerText, portLines, syncText } from './strip';
+import {
+  externalText,
+  offlineWarning,
+  oldCopiesText,
+  partnerText,
+  portLines,
+  syncText,
+} from './strip';
 
 const entry = (actorName: string, label: string): HistoryEntry => ({
   groupId: 'g',
@@ -67,5 +74,29 @@ describe('the partner’s Eagle', () => {
     );
     expect(oldCopiesText({ ...p, oldCopies: 0 }, 'Sam')).toBeNull();
     expect(oldCopiesText(p, 'Sam')).toBeNull();
+  });
+});
+
+describe('the Dropbox offline warning', () => {
+  const sync = (state: 'idle' | 'syncing' | 'offline' | 'unknown') => ({
+    state,
+    detail: '',
+    conflicts: [],
+  });
+  it('warns on a shared library while Dropbox is offline, naming the partner when known', () => {
+    expect(offlineWarning(sync('offline'), true, false, 'Sam')).toBe(
+      'Dropbox isn’t syncing. Anything you change now may clash with Sam’s changes later.',
+    );
+    expect(offlineWarning(sync('offline'), true, false, null)).toBe(
+      'Dropbox isn’t syncing. Anything you change now may clash with your partner’s changes later.',
+    );
+  });
+  it('stays quiet when there is nothing to clash with or nothing to change', () => {
+    expect(offlineWarning(sync('offline'), false, false, 'Sam')).toBeNull(); // not in Dropbox
+    expect(offlineWarning(sync('offline'), true, true, 'Sam')).toBeNull(); // read-only
+    expect(offlineWarning(sync('idle'), true, false, 'Sam')).toBeNull();
+    expect(offlineWarning(sync('syncing'), true, false, 'Sam')).toBeNull();
+    expect(offlineWarning(sync('unknown'), true, false, 'Sam')).toBeNull(); // no client: can't tell
+    expect(offlineWarning(null, true, false, 'Sam')).toBeNull();
   });
 });

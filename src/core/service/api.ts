@@ -2,6 +2,7 @@
 // writes go through the operation files with `actor` recorded as who did it.
 import type { CoreApi } from '../../shared/api';
 import type { Actor } from '../../shared/types';
+import { resolveConflict } from './conflicts';
 import { copyToLibrary, listLibraryFolders } from './copyToLibrary';
 import * as dupes from './dupeOps';
 import * as folders from './folderOps';
@@ -128,6 +129,7 @@ export function makeApi(svc: CoreService, actor: Actor): CoreApi {
     planRootConflict: async (relPath) => planRootConflict(S(), relPath),
     applyRootConflict: async (relPath, pickedIds) =>
       applyRootConflict(S(), actor, relPath, pickedIds),
+    resolveConflict: async (relPath, takeCopy) => resolveConflict(S(), actor, relPath, takeCopy),
     copyToLibrary: async (ids, targetPath, opts) =>
       copyToLibrary(S(), actor, ids, targetPath, opts),
     listLibraryFolders: async (path) => listLibraryFolders(S(), path),

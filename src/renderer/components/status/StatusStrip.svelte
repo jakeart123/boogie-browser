@@ -105,9 +105,9 @@
     <button
       class="link amber"
       onclick={() => ui.openDialog('conflicts')}
-      title="Dropbox kept two versions of some files"
+      title="Boogie tidies and merges conflicted copies by itself. These need you."
     >
-      <TriangleAlert size={13} />{plural(conflicts, 'conflicted copy', 'conflicted copies')}
+      <TriangleAlert size={13} />{plural(conflicts, 'conflicted copy', 'conflicted copies')} to review
     </button>
   {/if}
 

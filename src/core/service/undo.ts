@@ -3,7 +3,14 @@
 import { readFile } from 'node:fs/promises';
 import type { Actor, HistoryEntry, UndoResult } from '../../shared/types';
 import type { ChangeContext, UndoPlan } from '../contracts';
-import { applyWrites, ensureWritable, inOrder, runGroup, writeRoot } from './group';
+import {
+  applyWrites,
+  ensureWritable,
+  inOrder,
+  runGroup,
+  settleSharedFile,
+  writeRoot,
+} from './group';
 import { itemsText, quoted } from './labels';
 import { loadLibraryFiles } from './state';
 import type { Session, Touch } from './types';
@@ -171,6 +178,7 @@ export async function applyUndo(
 /** tags.json and saved-filters.json (a starred tag, a tag rename's fix-up, a saved filter). */
 async function undoSmallFiles(s: Session, ctx: ChangeContext, plan: UndoPlan): Promise<number> {
   let done = 0;
+  if (plan.tagsFile) await settleSharedFile(s, 'tags.json');
   if (plan.tagsFile && (await s.lib.updateTagsFile?.(plan.tagsFile, ctx))) done++;
   if (plan.savedFilters && (await s.lib.updateSavedFilters?.(plan.savedFilters, ctx))) done++;
   if (plan.tagsFile) await loadLibraryFiles(s, 'tags');

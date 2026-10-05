@@ -1,6 +1,8 @@
 <script lang="ts">
   // Top of the main column, only when something needs saying: the library is read-only, Boogie's
-  // background writes keep failing, or the library is still being read for the first time.
+  // background writes keep failing, Dropbox isn't syncing a shared library, or the library is
+  // still being read for the first time.
+  import CloudOff from '@lucide/svelte/icons/cloud-off';
   import Lock from '@lucide/svelte/icons/lock';
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
@@ -10,6 +12,7 @@
   import { errorText } from '../../lib/edit';
   import { ui } from '../../lib/stores/ui.svelte';
   import { PROTECTED_WRITES } from '../dialogs/settings';
+  import { offlineWarning } from './strip';
 
   const st = $derived(library.state);
   const reason = $derived(
@@ -25,6 +28,16 @@
   // Present only while Boogie's background writes keep failing (older cores never send it).
   const writeProblem = $derived(
     typeof library.status?.writeProblem === 'string' ? library.status.writeProblem.trim() : '',
+  );
+  // Shared library, Dropbox not syncing: edits now may clash with the partner's later. The core
+  // reports a library outside Dropbox as idle ("Not in Dropbox"), so this never shows for those.
+  const syncWarning = $derived(
+    offlineWarning(
+      library.status?.sync ?? null,
+      !!library.current?.shared,
+      !!st?.readOnly,
+      library.current?.partnerName?.trim() || null,
+    ),
   );
   const indexing = $derived(st?.indexing ?? null);
   const pct = $derived(
@@ -122,6 +135,14 @@
   <div class="bar warn" role="alert">
     <TriangleAlert size={14} />
     <span class="msg">{writeProblem}</span>
+  </div>
+{/if}
+
+{#if syncWarning}
+  <!-- Why (not running, waiting to be linked, paused) is in the status strip, in Dropbox's words. -->
+  <div class="bar warn" role="alert">
+    <CloudOff size={14} />
+    <span class="msg">{syncWarning}</span>
   </div>
 {/if}
 

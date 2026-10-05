@@ -53,13 +53,13 @@ async function findClient(dirs: string[]): Promise<string | null> {
   return null;
 }
 
-/** Run `file status`; resolves with stdout, or null on any failure or timeout. Never leaves a process behind. */
-function runStatus(file: string, timeoutMs: number): Promise<string | null> {
+/** Run `file <args>`; resolves with stdout, or null on any failure or timeout. Never leaves a process behind. */
+function runClient(file: string, args: string[], timeoutMs: number): Promise<string | null> {
   return new Promise((resolve) => {
     let out = '';
     let done = false;
     // Own process group so a timeout can take the client's children down with it.
-    const child = spawn(file, ['status'], { stdio: ['ignore', 'pipe', 'ignore'], detached: true });
+    const child = spawn(file, args, { stdio: ['ignore', 'pipe', 'ignore'], detached: true });
     const finish = (value: string | null) => {
       if (done) return;
       done = true;
@@ -90,12 +90,46 @@ export function parseDropboxStatus(output: string): State {
   const first = lines[0];
   if (!first) return UNAVAILABLE;
   const text = lines.join(' ').toLowerCase();
-  if (/isn'?t running|not running/.test(text)) return { state: 'offline', detail: first };
+  // Not running, not linked to an account and paused all mean nothing is being synced right now.
+  const head = first.toLowerCase();
+  if (
+    /isn'?t running|not running/.test(text) ||
+    head.startsWith('waiting to be linked') ||
+    (/\bpaused\b/.test(head) && !/^(uploading|downloading|indexing)/.test(head))
+  )
+    return { state: 'offline', detail: first };
   if (/^up to date/.test(text)) return { state: 'idle', detail: 'Up to date' };
-  if (/paused/.test(text)) return { state: 'unknown', detail: first };
   if (/syncing|downloading|uploading|indexing|connecting|starting/.test(text))
     return { state: 'syncing', detail: first };
-  return { state: 'unknown', detail: first }; // e.g. "Waiting to be linked to a Dropbox account..."
+  return { state: 'unknown', detail: first };
+}
+
+type FileState = 'upToDate' | 'syncing' | 'unknown';
+
+/**
+ * `dropbox filestatus a b ...` prints one `<path>:   <status>` line per path ("up to date",
+ * "syncing", "unwatched" ...). Anything missing or odd is 'unknown', which never blocks anything.
+ */
+export function parseFileStatus(
+  output: string,
+  paths: readonly string[],
+): Record<string, FileState> {
+  const lines = output.split('\n').filter((l) => l.trim());
+  const out: Record<string, FileState> = {};
+  const read = (text: string): FileState => {
+    const t = text.trim().toLowerCase();
+    if (t === 'up to date') return 'upToDate';
+    if (/^(syncing|downloading|uploading|indexing)/.test(t)) return 'syncing';
+    return 'unknown';
+  };
+  paths.forEach((path, i) => {
+    const line = lines.find((l) => l.startsWith(`${path}:`));
+    // One line per path in order: if the client printed the path in another form (a resolved link), trust the position.
+    const byPosition =
+      lines.length === paths.length ? lines[i]?.replace(/^.*?:\s+/, '') : undefined;
+    out[path] = line !== undefined ? read(line.slice(path.length + 1)) : read(byPosition ?? '');
+  });
+  return out;
 }
 
 export function createDropboxStatus(opts: DropboxStatusOptions = {}): DropboxStatus {
@@ -115,7 +149,7 @@ export function createDropboxStatus(opts: DropboxStatusOptions = {}): DropboxSta
   async function look(): Promise<State> {
     const client = await findClient(dirs());
     if (!client) return UNAVAILABLE;
-    const out = await runStatus(client, timeoutMs);
+    const out = await runClient(client, ['status'], timeoutMs);
     return out === null ? UNAVAILABLE : parseDropboxStatus(out);
   }
 
@@ -125,6 +159,19 @@ export function createDropboxStatus(opts: DropboxStatusOptions = {}): DropboxSta
       const value = look().catch(() => UNAVAILABLE);
       cached = { at: now(), value };
       return value;
+    },
+
+    async fileStatus(paths) {
+      const unknown = () => Object.fromEntries(paths.map((p) => [p, 'unknown' as const]));
+      if (!paths.length) return {};
+      try {
+        const client = await findClient(dirs());
+        if (!client) return unknown();
+        const out = await runClient(client, ['filestatus', ...paths], timeoutMs);
+        return out === null ? unknown() : parseFileStatus(out, paths);
+      } catch {
+        return unknown();
+      }
     },
   };
 }
