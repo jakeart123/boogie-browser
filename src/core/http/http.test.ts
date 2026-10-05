@@ -334,6 +334,18 @@ describe.skipIf(!sandboxAvailable)('the Eagle-compatible servers on the real cor
       expect(rel.status).toBe(400);
     });
 
+    it('refuses an add whose folders are all from another library, instead of adding it unfiled', async () => {
+      const { sb, api } = await boot();
+      const [file] = sourceFiles(sb, 'src', ['0-11.jpg']);
+      const entries = (await history(sb)).length;
+      const r = await call(api, 'POST', '/api/item/addFromPath', {
+        body: { path: file, folderId: 'FOLDER-FROM-ANOTHER-LIBRARY' },
+      });
+      expect(r.status).toBe(400);
+      expect(r.json.message).toMatch(/None of those folders/);
+      expect(await history(sb)).toHaveLength(entries);
+    });
+
     it('file: URLs: never from the browser extension, never a folder, only a file for local clients', async () => {
       const { sb, api, ext } = await boot();
       const home = join(sb.dir, 'someones-home');

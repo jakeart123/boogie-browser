@@ -6,7 +6,7 @@ import type { LibraryState, TagGroup } from '../../../shared/types';
 import { type Change } from '../changes';
 import { UserError } from '../errors';
 import { plural, type Tool, TWO_STEP, uniq, writableLibrary } from '../kit';
-import { colorOrNone, dryRun, planId, tagList } from '../schemas';
+import { colorOrNone, dryRun, library, planId, tagList } from '../schemas';
 import { fromMutation, runWrite } from '../write';
 
 const PARTNER_NOTE =
@@ -33,7 +33,7 @@ export function registerTagGroupTools(tool: Tool): void {
     {
       title: 'Star tags',
       description: 'Star tags (or unstar them with starred: false), as in Eagle.' + PARTNER_NOTE,
-      input: z.strictObject({ tags: tagList, starred: z.boolean().optional() }),
+      input: z.strictObject({ library, tags: tagList, starred: z.boolean().optional() }),
       kind: 'additive',
     },
     async ({ tags, starred }, call) => {
@@ -65,6 +65,7 @@ export function registerTagGroupTools(tool: Tool): void {
         'Create a tag group (give name), or change one (give group: its id or name). tags replaces the list; add_tags and remove_tags edit it.' +
         PARTNER_NOTE,
       input: z.strictObject({
+        library,
         group: z.string().trim().min(1).optional(),
         name: z.string().trim().min(1).max(200).optional(),
         tags: z.array(z.string().trim().min(1).max(100)).max(1000).optional(),
@@ -137,7 +138,7 @@ export function registerTagGroupTools(tool: Tool): void {
     {
       title: 'Delete tag group',
       description: 'Delete a tag group (the tags themselves stay on their items).' + TWO_STEP,
-      input: z.strictObject({ group: z.string().trim().min(1), plan_id: planId }),
+      input: z.strictObject({ library, group: z.string().trim().min(1), plan_id: planId }),
       kind: 'changing',
     },
     async ({ group, plan_id }, call) => {

@@ -14,6 +14,7 @@ import { keepTheirs } from './partner';
 import { applyRootConflict, planRootConflict } from './rootConflict';
 import * as filters from './savedFilters';
 import * as tags from './tagOps';
+import { buildLibraryState } from './state';
 import { setTagStarred } from './tagsFile';
 import * as undoOps from './undo';
 
@@ -23,9 +24,18 @@ export const USER: Actor = { kind: 'user', name: 'You' };
 /** Where Boogie may write. Only the UI's own actor changes these (see setSettings). */
 const SAFETY_SETTINGS = ['writableRoots', 'allowProtectedWrites'] as const;
 
-/** Every method is an own property (the IPC layer only calls own functions of `api`). */
-export function makeApi(svc: CoreService, actor: Actor): CoreApi {
-  const S = () => svc.need();
+/**
+ * Every method is an own property (the IPC layer only calls own functions of `api`). Library
+ * calls go to the library the window shows, or with `libraryId` always to that library (agents:
+ * what the window shows must never decide where they write).
+ */
+export function makeApi(svc: CoreService, actor: Actor, libraryId?: string): CoreApi {
+  const pinned = () => {
+    const s = svc.sessionById(libraryId!);
+    if (!s) throw new Error('That library was closed. Try again.');
+    return s;
+  };
+  const S = libraryId ? pinned : () => svc.need();
   return {
     // ── Libraries ──
     listLibraries: () => svc.listLibraries(),
@@ -34,7 +44,11 @@ export function makeApi(svc: CoreService, actor: Actor): CoreApi {
     addLibrary: (path) => svc.addLibrary(path),
     forgetLibrary: (path) => svc.forgetLibrary(path),
     setLibraryOptions: (path, opts) => svc.setLibraryOptions(path, opts),
-    getLibraryState: async () => svc.getLibraryState(),
+    getLibraryState: async () => {
+      if (!libraryId) return svc.getLibraryState();
+      const s = svc.sessionById(libraryId);
+      return s ? buildLibraryState(s) : null;
+    },
     closeLibrary: () => svc.closeLibrary(),
 
     // ── Query ──
@@ -92,7 +106,7 @@ export function makeApi(svc: CoreService, actor: Actor): CoreApi {
 
     // ── History ──
     listHistory: async (opts) => {
-      const s = svc.session;
+      const s = libraryId ? svc.sessionById(libraryId) : svc.session;
       return s && !s.closed ? s.journal.list(s.ref.id, opts) : [];
     },
     undo: async (groupId) => undoOps.undo(S(), actor, groupId),

@@ -616,6 +616,14 @@ export interface CoreHost {
   api: import('../shared/api').CoreApi;
   /** Same API; every write attributed to `actor` (agents, the browser extension). */
   as(actor: Actor): import('../shared/api').CoreApi;
+  /**
+   * For agents: an API bound to the library at `path` (a known one), whatever the window shows.
+   * It is opened in the background if needed; call `release()` when done with it.
+   */
+  forLibrary(
+    path: string,
+    actor: Actor,
+  ): Promise<{ api: import('../shared/api').CoreApi; release(): void }>;
   on<K extends import('../shared/api').BoogieEventName>(
     event: K,
     fn: (payload: import('../shared/api').BoogieEvents[K]) => void,

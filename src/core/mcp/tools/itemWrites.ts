@@ -14,7 +14,7 @@ import {
   uniq,
   writableLibrary,
 } from '../kit';
-import { dryRun, folderRefs, itemId, itemIds, planId, tagList } from '../schemas';
+import { dryRun, folderRefs, itemId, itemIds, library, planId, tagList } from '../schemas';
 import { fetchItems, fromMutation, runWrite } from '../write';
 
 interface PatchJob {
@@ -106,7 +106,13 @@ export function registerItemWriteTools(tool: Tool): void {
       title: 'Add tags',
       description:
         'Add tags to items (existing tags stay). Reuse spellings from list_tags.' + ADDITIVE_RULE,
-      input: z.strictObject({ item_ids: itemIds, tags: tagList, dry_run: dryRun, plan_id: planId }),
+      input: z.strictObject({
+        library,
+        item_ids: itemIds,
+        tags: tagList,
+        dry_run: dryRun,
+        plan_id: planId,
+      }),
       kind: 'additive',
     },
     ({ item_ids, tags, dry_run, plan_id }, call) => {
@@ -132,6 +138,7 @@ export function registerItemWriteTools(tool: Tool): void {
       title: 'Set rating',
       description: 'Set the star rating of items (1 to 5; 0 clears it).' + ADDITIVE_RULE,
       input: z.strictObject({
+        library,
         item_ids: itemIds,
         rating: z.number().int().min(0).max(5),
         dry_run: dryRun,
@@ -164,6 +171,7 @@ export function registerItemWriteTools(tool: Tool): void {
         'Replace the note of items with this text (empty clears it). Read the old note with get_item first if it matters.' +
         ADDITIVE_RULE,
       input: z.strictObject({
+        library,
         item_ids: itemIds,
         note: z.string().max(20_000),
         dry_run: dryRun,
@@ -193,6 +201,7 @@ export function registerItemWriteTools(tool: Tool): void {
       title: 'Set source URL',
       description: 'Replace the source URL of items (empty clears it).' + ADDITIVE_RULE,
       input: z.strictObject({
+        library,
         item_ids: itemIds,
         url: z.string().max(2000),
         dry_run: dryRun,
@@ -235,6 +244,7 @@ export function registerItemWriteTools(tool: Tool): void {
         "Put items into folders (they stay in their other folders). Items also get the folders' auto-tags, and their parents'." +
         ADDITIVE_RULE,
       input: z.strictObject({
+        library,
         item_ids: itemIds,
         folders: folderRefs,
         dry_run: dryRun,
@@ -265,7 +275,7 @@ export function registerItemWriteTools(tool: Tool): void {
     {
       title: 'Remove tags',
       description: 'Remove tags from items.' + TWO_STEP,
-      input: z.strictObject({ item_ids: itemIds, tags: tagList, plan_id: planId }),
+      input: z.strictObject({ library, item_ids: itemIds, tags: tagList, plan_id: planId }),
       kind: 'changing',
       idempotent: true,
     },
@@ -291,7 +301,7 @@ export function registerItemWriteTools(tool: Tool): void {
       title: 'Remove from folders',
       description:
         'Take items out of folders (the items stay in the library; auto-tags stay too).' + TWO_STEP,
-      input: z.strictObject({ item_ids: itemIds, folders: folderRefs, plan_id: planId }),
+      input: z.strictObject({ library, item_ids: itemIds, folders: folderRefs, plan_id: planId }),
       kind: 'changing',
       idempotent: true,
     },
@@ -318,6 +328,7 @@ export function registerItemWriteTools(tool: Tool): void {
         'Batch rename, numbered in the order given. Tokens: * original name, %N number (from start, zero padded), %D date added YYYYMMDD, %DD YYYY-MM-DD, %DDD YYYY-MM-DD HH.mm.ss, %T tags. find/replace runs after the template. Names may still be made filename-safe.' +
         TWO_STEP,
       input: z.strictObject({
+        library,
         item_ids: itemIds,
         template: z.string().min(1).max(200),
         start: z.number().int().min(0).optional().describe('First %N. Default 1.'),
@@ -371,6 +382,7 @@ export function registerItemWriteTools(tool: Tool): void {
       title: 'Rename one item',
       description: 'Rename one item (name without extension).' + TWO_STEP,
       input: z.strictObject({
+        library,
         id: itemId,
         name: z.string().trim().min(1).max(200),
         plan_id: planId,
@@ -400,7 +412,7 @@ export function registerItemWriteTools(tool: Tool): void {
       description:
         'Move items to the trash (recoverable with restore_items; nothing is deleted from disk).' +
         TWO_STEP,
-      input: z.strictObject({ item_ids: itemIds, plan_id: planId }),
+      input: z.strictObject({ library, item_ids: itemIds, plan_id: planId }),
       kind: 'changing',
       idempotent: true,
     },
@@ -413,7 +425,7 @@ export function registerItemWriteTools(tool: Tool): void {
     {
       title: 'Restore from trash',
       description: 'Put items back from the trash.' + TWO_STEP,
-      input: z.strictObject({ item_ids: itemIds, plan_id: planId }),
+      input: z.strictObject({ library, item_ids: itemIds, plan_id: planId }),
       kind: 'changing',
       idempotent: true,
     },

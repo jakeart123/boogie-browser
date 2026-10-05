@@ -13,7 +13,7 @@ import { UserError } from '../errors';
 import { FolderIndex } from '../folders';
 import { fullItemOut, itemOut } from '../format';
 import { openLibrary, Raw, type Tool, uniq } from '../kit';
-import { itemId } from '../schemas';
+import { itemId, library } from '../schemas';
 import { thumbnailBytes } from '../thumb';
 import { getItemsInOrder } from '../write';
 
@@ -35,6 +35,7 @@ const ids200 = z.array(itemId).min(1).max(200, 'At most 200 ids per call.');
 const date = z.string().optional();
 
 export const SearchInput = z.strictObject({
+  library,
   query: z
     .string()
     .optional()
@@ -126,7 +127,10 @@ function findSmartFolder(state: LibraryState, ref: string): SmartFolderNode {
 }
 
 /** Turn the friendly search arguments into the app's QueryRequest. Exported for tests. */
-export function buildQuery(a: z.infer<typeof SearchInput>, state: LibraryState): QueryRequest {
+export function buildQuery(
+  a: Omit<z.infer<typeof SearchInput>, 'library'>,
+  state: LibraryState,
+): QueryRequest {
   const folders = new FolderIndex(state.folders);
   const f: FilterSpec = {};
   if (a.query?.trim()) f.keywords = a.query.trim();
@@ -232,13 +236,13 @@ export function registerItemTools(tool: Tool): void {
       title: 'Get item',
       description:
         'Everything about one item: full note, colors, comments, dates, and file_path (the original on disk; read-only for you).',
-      input: z.strictObject({ id: itemId }),
+      input: z.strictObject({ library, id: itemId }),
       kind: 'read',
     },
     async ({ id }, call) => {
       const state = await openLibrary(call);
       const item = await call.api.getItem(id);
-      if (!item) throw new UserError(`No item with id ${id} in the open library.`);
+      if (!item) throw new UserError(`No item with id ${id} in that library.`);
       return { item: fullItemOut(item, new FolderIndex(state.folders)) };
     },
   );
@@ -249,7 +253,7 @@ export function registerItemTools(tool: Tool): void {
       title: 'Get items',
       description:
         'Up to 200 items by id, as search_items shows them but with the full note. Unknown ids come back in `missing`.',
-      input: z.strictObject({ ids: ids200 }),
+      input: z.strictObject({ library, ids: ids200 }),
       kind: 'read',
     },
     async ({ ids }, call) => {
@@ -266,13 +270,13 @@ export function registerItemTools(tool: Tool): void {
     {
       title: 'Get thumbnail',
       description: 'Look at an item: its thumbnail as an image (under 1 MB).',
-      input: z.strictObject({ id: itemId }),
+      input: z.strictObject({ library, id: itemId }),
       kind: 'read',
     },
     async ({ id }, call) => {
       const state = await openLibrary(call);
       const item = await call.api.getItem(id);
-      if (!item) throw new UserError(`No item with id ${id} in the open library.`);
+      if (!item) throw new UserError(`No item with id ${id} in that library.`);
       const { data, mime } = await thumbnailBytes(call, state.ref.id, item);
       const dims = item.width && item.height ? `, ${item.width}x${item.height}` : '';
       return new Raw({

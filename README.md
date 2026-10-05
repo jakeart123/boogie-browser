@@ -67,6 +67,10 @@ claude mcp add --transport http boogie http://127.0.0.1:41597/mcp \
   --header "Authorization: Bearer $(cat ~/.config/boogie-browser/api-token)"
 ```
 
+Agents name the library on every call and work on it directly, whether or not the app window
+shows it, so switching libraries in the window never redirects an agent's work. Agents can't
+change what the window shows.
+
 ## Tests
 
 ```sh

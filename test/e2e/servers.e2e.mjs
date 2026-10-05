@@ -209,8 +209,9 @@ describe('Eagle HTTP API and MCP server', () => {
     if (json.error) throw new Error(`${method}: ${JSON.stringify(json.error)}`);
     return json.result;
   }
+  // Agents name their library on every call (the window's library never decides it).
   const callTool = async (name, args) => {
-    const r = await rpc('tools/call', { name, arguments: args });
+    const r = await rpc('tools/call', { name, arguments: { library: lib, ...args } });
     if (r.isError) throw new Error(`${name}: ${r.content?.[0]?.text}`);
     return { ...r, data: r.structuredContent ?? JSON.parse(r.content?.[0]?.text ?? 'null') };
   };

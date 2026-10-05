@@ -8,7 +8,7 @@ import { FolderIndex } from '../folders';
 import { jobOut } from '../format';
 import { openLibrary, plural, type Tool, TWO_STEP, uniq, writableLibrary } from '../kit';
 import { MAX_ITEMS_PER_APPLY } from '../plans';
-import { itemId, page, planId } from '../schemas';
+import { itemId, library, page, planId } from '../schemas';
 import { fetchItems, fromMutation, runWrite } from '../write';
 
 /** How long a tool call waits for a job before handing back a job id. Tests shorten it. */
@@ -88,6 +88,7 @@ export function registerJobTools(tool: Tool): void {
       description:
         'Find duplicate items: exact (same file content, any name) or similar (near copies). Changes nothing. Waits up to 60 s, else returns a job_id for job_status. Groups come with a suggested keeper for merge_duplicates.',
       input: z.strictObject({
+        library,
         mode: z.enum(['exact', 'similar']).optional().describe('Default exact.'),
         threshold: z
           .number()
@@ -129,7 +130,7 @@ export function registerJobTools(tool: Tool): void {
       title: 'Job status',
       description:
         'State, progress and result of a find_duplicates or import job. offset and limit page through duplicate groups.',
-      input: z.strictObject({ job_id: z.string().min(1), ...page }),
+      input: z.strictObject({ library, job_id: z.string().min(1), ...page }),
       kind: 'read',
     },
     async ({ job_id, offset, limit }, call) => {
@@ -151,9 +152,10 @@ export function registerJobTools(tool: Tool): void {
     {
       title: 'Merge duplicates',
       description:
-        'Merge duplicate groups (open library only): each keeper gets the union of tags, folders and notes, the best rating and the first URL; the others go to the trash. All groups become one undoable change.' +
+        'Merge duplicate groups (this library only): each keeper gets the union of tags, folders and notes, the best rating and the first URL; the others go to the trash. All groups become one undoable change.' +
         TWO_STEP,
       input: z.strictObject({
+        library,
         groups: z
           .array(
             z.strictObject({

@@ -8,7 +8,7 @@ import { UserError } from '../errors';
 import { FolderIndex } from '../folders';
 import { plural, type Tool, TWO_STEP, uniq, writableLibrary } from '../kit';
 import { MAX_ITEMS_PER_APPLY } from '../plans';
-import { colorName, colorOrNone, dryRun, folderRef, planId } from '../schemas';
+import { colorName, colorOrNone, dryRun, folderRef, library, planId } from '../schemas';
 import { fetchItems, fromMutation, runWrite } from '../write';
 
 /** Ids of every item matching the filter, trashed ones included: renames and deletes reach those too. */
@@ -33,6 +33,7 @@ export function registerOrganizeTools(tool: Tool): void {
       description:
         'Create a folder (top level, or inside parent). Safe to repeat: an existing folder of that name there is returned instead.',
       input: z.strictObject({
+        library,
         name: z.string().trim().min(1).max(200),
         parent: folderRef.optional(),
         color: colorName.optional(),
@@ -91,6 +92,7 @@ export function registerOrganizeTools(tool: Tool): void {
       description:
         "Set a folder's description, color or auto-tags (tags every item added to it gets; replaces the list).",
       input: z.strictObject({
+        library,
         folder: folderRef,
         description: z.string().max(10_000).optional(),
         color: colorOrNone.optional(),
@@ -151,6 +153,7 @@ export function registerOrganizeTools(tool: Tool): void {
       title: 'Rename folder',
       description: 'Rename a folder.' + TWO_STEP,
       input: z.strictObject({
+        library,
         folder: folderRef,
         name: z.string().trim().min(1).max(200),
         plan_id: planId,
@@ -186,6 +189,7 @@ export function registerOrganizeTools(tool: Tool): void {
       description:
         'Move a folder (with its contents) under new_parent, or to the top level.' + TWO_STEP,
       input: z.strictObject({
+        library,
         folder: folderRef,
         new_parent: folderRef.optional(),
         position: z
@@ -251,6 +255,7 @@ export function registerOrganizeTools(tool: Tool): void {
         'Delete a folder and its subfolders. Items are only taken out of them, unless delete_contents is true: then items in no other folder go to the trash.' +
         TWO_STEP,
       input: z.strictObject({
+        library,
         folder: folderRef,
         delete_contents: z.boolean().optional(),
         plan_id: planId,
@@ -329,6 +334,7 @@ export function registerOrganizeTools(tool: Tool): void {
       title: 'Rename tag',
       description: 'Rename a tag on every item (merges into `to` if that tag exists).' + TWO_STEP,
       input: z.strictObject({
+        library,
         from: z.string().trim().min(1).max(100),
         to: z.string().trim().min(1).max(100),
         plan_id: planId,
@@ -382,7 +388,7 @@ export function registerOrganizeTools(tool: Tool): void {
     {
       title: 'Delete tag',
       description: 'Remove a tag from every item that has it.' + TWO_STEP,
-      input: z.strictObject({ name: z.string().trim().min(1).max(100), plan_id: planId }),
+      input: z.strictObject({ library, name: z.string().trim().min(1).max(100), plan_id: planId }),
       kind: 'changing',
     },
     async ({ name, plan_id }, call) => {

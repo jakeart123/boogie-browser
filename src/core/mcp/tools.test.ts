@@ -83,9 +83,7 @@ describe.skipIf(!sandboxAvailable)('MCP tools on the real core', () => {
       'merge_duplicates',
       'undo',
     ];
-    expect(tools.map((t) => t.name).sort()).toEqual(
-      [...read, ...additive, ...changing, 'open_library'].sort(),
-    );
+    expect(tools.map((t) => t.name).sort()).toEqual([...read, ...additive, ...changing].sort());
     for (const n of read) expect(byName.get(n).annotations.readOnlyHint, n).toBe(true);
     for (const n of additive)
       expect(byName.get(n).annotations, n).toMatchObject({
@@ -97,13 +95,13 @@ describe.skipIf(!sandboxAvailable)('MCP tools on the real core', () => {
         readOnlyHint: false,
         destructiveHint: true,
       });
-    expect(byName.get('open_library').annotations).toMatchObject({ destructiveHint: false });
     expect(byName.get('import_url').annotations.openWorldHint).toBe(true);
     for (const n of changing.filter((n) => n !== 'undo'))
       expect(byName.get(n).inputSchema.properties.plan_id, n).toBeDefined();
     // Every agent session pays for this list: 48 KB before the round-2 trim, 20.9 KB for 34 tools,
-    // 27.5 KB for 42 (round 4: smart folders, tag groups, starred tags, saved filters, copy).
-    expect(Buffer.byteLength(JSON.stringify(json.result))).toBeLessThan(28_500);
+    // 27.5 KB for 42 (round 4: smart folders, tag groups, starred tags, saved filters, copy),
+    // 28.7 KB once every tool took a `library` argument.
+    expect(Buffer.byteLength(JSON.stringify(json.result))).toBeLessThan(29_000);
   });
 
   it('search_items finds real items by folder (subfolders included), tags, rating and type', async () => {
@@ -575,13 +573,13 @@ describe.skipIf(!sandboxAvailable)('MCP tools on the real core', () => {
       return r.data;
     };
     const info = await ok('library_info');
-    expect(info).toMatchObject({ open: true, shared_with_partner: true, partner: 'Sam' });
+    expect(info).toMatchObject({ shared_with_partner: true, partner: 'Sam' });
     expect(info.counts).toMatchObject({ items: 10, in_trash: 1 });
     expect(info.top_level_folders.map((f: any) => f.name)).toEqual(
       expect.arrayContaining(['Atelier', 'Refs']),
     );
     expect((await ok('list_libraries')).libraries[0]).toMatchObject({
-      open: true,
+      open_in_app: true,
       partner: 'Sam',
     });
     expect((await ok('list_folders')).folders.map((f: any) => f.path)).toContain(
@@ -635,9 +633,6 @@ describe.skipIf(!sandboxAvailable)('MCP tools on the real core', () => {
       /not a valid URL/,
     );
     expect((await api.listHistory()).length).toBe(historyBefore); // previews wrote nothing
-
-    const opened = await ok('open_library', { path: x.sb.libPath, read_only: true });
-    expect(opened).toMatchObject({ read_only: true });
   });
 
   it('refuses every write while the user has paused the agent, a renamed client too, and holds nothing back', async () => {
@@ -656,7 +651,6 @@ describe.skipIf(!sandboxAvailable)('MCP tools on the real core', () => {
     };
     await refused('add_tags', { item_ids: [a], tags: ['later'] });
     await refused('undo', {});
-    await refused('open_library', { path: x.sb.libPath });
     // Same program (User-Agent), new name: still paused.
     await refused('add_tags', { item_ids: [a], tags: ['later'] }, { ...bot, title: 'Bot 2' });
     // Reads still work, and the strip keeps the agent, paused, so the user can resume it.
@@ -804,13 +798,56 @@ describe.skipIf(!sandboxAvailable)('MCP tools on the real core', () => {
     writeFileSync(join(other, 'mtime.json'), '{"all":0}');
     await api.addLibrary(other);
     const before = readdirSync(join(other, 'images')).length;
-    const copied = await ok('copy_to_library', { item_ids: [a, b], library: other });
+    const copied = await ok('copy_to_library', { item_ids: [a, b], to_library: other });
     expect(copied.status, JSON.stringify(copied)).toBe('applied');
     expect(copied.added).toHaveLength(2);
     expect(readdirSync(join(other, 'images'))).toHaveLength(before + 2);
     expect(
-      (await x.client.call('copy_to_library', { item_ids: [a], library: x.sb.libPath })).text,
-    ).toMatch(/open library/);
+      (await x.client.call('copy_to_library', { item_ids: [a], to_library: x.sb.libPath })).text,
+    ).toMatch(/the same/);
+  });
+
+  it("works on the library it names, never the one the user is looking at, and keeps the user's view out of it", async () => {
+    const x = await start();
+    const [a, b] = x.sample;
+    const { api } = x.host;
+    const main = x.sb.libPath;
+    const other = join(x.sb.dir, 'Other.library');
+    execFileSync('cp', ['-r', '--reflink=auto', main, other]);
+    rmSync(join(other, 'images'), { recursive: true });
+    mkdirSync(join(other, 'images'));
+    writeFileSync(join(other, 'mtime.json'), '{"all":0}');
+    await api.addLibrary(other);
+    const seen: string[] = [];
+    x.host.on('library', (s) => seen.push(s.ref.path));
+    const ok = async (tool: string, args: Record<string, unknown>) => {
+      const r = await x.client.call(tool, args);
+      expect(r.isError, `${tool}: ${r.text}`).toBe(false);
+      return r.data;
+    };
+
+    // The user is on main; the agent works in Other, which opens in the background only.
+    await ok('create_folder', { library: other, name: 'Agent picks' });
+    const copied = await ok('copy_to_library', { item_ids: [a], to_library: 'Other' });
+    expect(copied.added).toHaveLength(1);
+    expect((await api.getLibraryState())?.ref.path).toBe(main);
+    expect(seen).not.toContain(other);
+    // The copy went through Other's open session: one History entry, nothing logged as outside.
+    const otherHistory = (await ok('history', { library: other })).entries;
+    expect(otherHistory.map((e: any) => e.label)).not.toContainEqual(
+      expect.stringMatching(/outside/i),
+    );
+    expect(otherHistory).toHaveLength(2);
+
+    // The user switches to Other: an agent naming main still writes to main.
+    await api.openLibrary(other);
+    expect((await api.getLibraryState())?.folders.map((f) => f.name)).toContain('Agent picks');
+    await ok('add_tags', { library: main, item_ids: [b], tags: ['agent-tag'] });
+    expect(x.sb.read(b).tags).toContain('agent-tag');
+    expect((await api.getLibraryState())?.ref.path).toBe(other);
+    // And back: Other stays usable for the agent after the user leaves it.
+    await api.openLibrary(main);
+    expect((await ok('library_info', { library: other })).counts.items).toBe(1);
   });
 });
 

@@ -85,7 +85,7 @@ async function setUp(sb: Sandbox, opts: { writable?: boolean; copies?: number })
     server,
     token,
     tokenFile,
-    client: makeClient(server.url, token),
+    client: makeClient(server.url, token, sb.libPath),
     ids,
     sample: SAMPLE,
     folders,

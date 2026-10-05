@@ -1,5 +1,6 @@
 // Undo: agents can revert the changes agents made, never the user's or the partner's.
 import { z } from 'zod';
+import { library } from '../schemas';
 import type { HistoryEntry } from '../../../shared/types';
 import { UserError } from '../errors';
 import { type Tool, writableLibrary } from '../kit';
@@ -11,7 +12,7 @@ export function registerUndoTool(tool: Tool): void {
       title: 'Undo',
       description:
         "Undo an agent's change by group_id (default: your latest). Fields edited since are left alone and reported as conflicts. The user's and the partner's changes can't be undone here.",
-      input: z.strictObject({ group_id: z.string().min(1).optional() }),
+      input: z.strictObject({ library, group_id: z.string().min(1).optional() }),
       // Reverting can remove things again (tags, folders), so it is not a harmless add.
       kind: 'changing',
       idempotent: false,
@@ -24,7 +25,7 @@ export function registerUndoTool(tool: Tool): void {
         target = history.find((h) => h.groupId === group_id);
         if (!target)
           throw new UserError(
-            `Group ${group_id} is not in the recent history of the open library. Use history to find a group_id.`,
+            `Group ${group_id} is not in the recent history of that library. Use history to find a group_id.`,
           );
       } else {
         target = history.find(

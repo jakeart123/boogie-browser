@@ -70,9 +70,7 @@ export class PlanStore {
       );
     }
     if (plan.libraryId !== libraryId)
-      throw new UserError(
-        'A different library is open now than when this plan was made. Run a new dry run.',
-      );
+      throw new UserError('This plan was made for another library. Run a new dry run.');
     return plan;
   }
 

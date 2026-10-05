@@ -14,7 +14,8 @@ import { registerUndoTool } from './tools/undo';
 
 /** Shown to every agent that connects. Plain rules first; tool descriptions repeat what matters. */
 const SERVER_INSTRUCTIONS = `Boogie Browser edits real Eagle libraries in place. Many libraries are shared over Dropbox with a partner who uses real Eagle on Windows, so every write is visible to a real person.
-- Start with library_info. Read before you write. Reuse existing tag and folder names (list_tags, list_folders).
+- Start with list_libraries. Every other tool takes \`library\` (a path or name from it) and works on that library directly, whether or not the user has it open in the app; what the user is looking at never changes where you write.
+- Read before you write (library_info). Reuse existing tag and folder names (list_tags, list_folders).
 - Prefer small batches. Anything that removes or renames things, and any write to more than 50 items, is a two step call: call it once to get the exact change list and a plan_id, check it, then call again with the same arguments plus plan_id. Plans last 15 minutes and cover at most 500 items.
 - Nothing is ever deleted for good from here. move_to_trash is recoverable. Never try to delete files or empty the trash.
 - Every write returns a group_id. undo reverts it. Tag groups and Quick Access edits may be overwritten by the partner's Eagle.
